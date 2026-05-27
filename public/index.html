@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PERSEUS Map Viewer</title>
+    <meta
+      name="description"
+      content="Lightweight viewer for PERSEUS forest modeling outputs. COG rasters, GeoJSON vectors, time-series playback."
+    />
+
+    <!-- MapLibre GL JS -->
+    <script src="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.js"></script>
+    <link
+      href="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.css"
+      rel="stylesheet"
+    />
+
+    <!-- geotiff.js — COG/GeoTIFF parsing -->
+    <script src="https://unpkg.com/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+
+    <!-- proj4 — reprojection support -->
+    <script src="https://unpkg.com/proj4@2.11.0/dist/proj4-src.js"></script>
+
+    <!-- chroma.js — colormaps for raster styling -->
+    <script src="https://unpkg.com/chroma-js@2.4.2/chroma.min.js"></script>
+
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar" aria-label="Layer panel">
+        <header class="sidebar-header">
+          <div class="brand">
+            <span class="brand-mark">P</span>
+            <div>
+              <div class="brand-title">PERSEUS</div>
+              <div class="brand-sub">Map Viewer</div>
+            </div>
+          </div>
+          <button id="toggle-sidebar" class="icon-btn" title="Collapse panel" aria-label="Collapse panel">
+            &laquo;
+          </button>
+        </header>
+
+        <section class="panel">
+          <h2 class="panel-title">Base map</h2>
+          <select id="basemap-select" class="select"></select>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 class="panel-title">Layers</h2>
+            <button id="add-layer-btn" class="btn-primary">+ Add layer</button>
+          </div>
+          <ul id="layer-list" class="layer-list" aria-live="polite"></ul>
+          <p id="layer-empty" class="empty-hint">
+            No layers yet. Add one from the built-ins below, paste a URL, or upload a file.
+          </p>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel-title">Built-in layers</h2>
+          <ul id="builtin-list" class="builtin-list"></ul>
+        </section>
+
+        <footer class="sidebar-footer">
+          <a href="https://perseus.uga.edu" target="_blank" rel="noopener">About PERSEUS</a>
+          <span class="dot">&middot;</span>
+          <a
+            href="https://github.com/"
+            target="_blank"
+            rel="noopener"
+            id="source-link"
+            >Source</a
+          >
+        </footer>
+      </aside>
+
+      <main id="map-region">
+        <div id="map" role="application" aria-label="Map"></div>
+
+        <div id="time-bar" class="time-bar hidden" aria-label="Time slider">
+          <button
+            id="time-play"
+            class="icon-btn time-play"
+            title="Play / pause"
+            aria-label="Play / pause"
+          >
+            &#9654;
+          </button>
+          <div class="time-track">
+            <input
+              id="time-slider"
+              type="range"
+              min="0"
+              max="0"
+              step="1"
+              value="0"
+              aria-label="Time"
+            />
+            <div class="time-labels">
+              <span id="time-min"></span>
+              <span id="time-current"></span>
+              <span id="time-max"></span>
+            </div>
+          </div>
+          <label class="time-speed">
+            <span>Speed</span>
+            <select id="time-speed">
+              <option value="2000">0.5&times;</option>
+              <option value="1000" selected>1&times;</option>
+              <option value="500">2&times;</option>
+              <option value="250">4&times;</option>
+            </select>
+          </label>
+          <label class="time-loop">
+            <input id="time-loop" type="checkbox" checked /> Loop
+          </label>
+          <div class="time-source" id="time-source"></div>
+        </div>
+
+        <button id="open-sidebar" class="floating-btn hidden" aria-label="Open panel">
+          &raquo;
+        </button>
+      </main>
+    </div>
+
+    <!-- Add-layer modal -->
+    <div id="add-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="add-modal-title">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3 id="add-modal-title">Add a layer</h3>
+          <button class="icon-btn" data-close-modal aria-label="Close">&times;</button>
+        </div>
+
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="url" role="tab" aria-selected="true">From URL</button>
+          <button class="tab" data-tab="file" role="tab" aria-selected="false">Upload file</button>
+        </div>
+
+        <div class="tab-pane" data-pane="url">
+          <label class="field">
+            <span>Layer name</span>
+            <input type="text" id="url-name" placeholder="e.g. Biomass 2030" />
+          </label>
+          <label class="field">
+            <span>URL</span>
+            <input
+              type="url"
+              id="url-input"
+              placeholder="https://… .tif  |  .geojson  |  .json"
+            />
+          </label>
+          <label class="field">
+            <span>Type</span>
+            <select id="url-type">
+              <option value="auto">Auto-detect from extension</option>
+              <option value="cog">Cloud-Optimized GeoTIFF (raster)</option>
+              <option value="geojson">GeoJSON (vector)</option>
+            </select>
+          </label>
+          <details class="advanced">
+            <summary>Raster styling (optional)</summary>
+            <label class="field">
+              <span>Colormap</span>
+              <select id="url-colormap">
+                <option value="">(default — grayscale)</option>
+                <option value="viridis">viridis</option>
+                <option value="magma">magma</option>
+                <option value="inferno">inferno</option>
+                <option value="plasma">plasma</option>
+                <option value="cividis">cividis</option>
+                <option value="Greens">Greens (forest)</option>
+                <option value="YlGn">YlGn (vegetation)</option>
+                <option value="RdYlGn">RdYlGn (health)</option>
+                <option value="Spectral">Spectral</option>
+              </select>
+            </label>
+            <div class="field-row">
+              <label class="field">
+                <span>Min</span>
+                <input type="number" id="url-min" step="any" placeholder="auto" />
+              </label>
+              <label class="field">
+                <span>Max</span>
+                <input type="number" id="url-max" step="any" placeholder="auto" />
+              </label>
+            </div>
+          </details>
+        </div>
+
+        <div class="tab-pane hidden" data-pane="file">
+          <label class="field">
+            <span>Layer name</span>
+            <input type="text" id="file-name" placeholder="e.g. Study region" />
+          </label>
+          <label class="field">
+            <span>File</span>
+            <input type="file" id="file-input" accept=".geojson,.json,.tif,.tiff" />
+          </label>
+          <p class="hint">
+            Supports <code>.geojson</code>, <code>.json</code>,
+            <code>.tif</code>/<code>.tiff</code> (COG). Files stay in your browser — nothing is uploaded.
+          </p>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-ghost" data-close-modal>Cancel</button>
+          <button class="btn-primary" id="add-confirm">Add layer</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+    <script src="state.js"></script>
+    <script src="layers.js"></script>
+    <script src="timeslider.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

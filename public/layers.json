@@ -1,0 +1,41 @@
+{
+  "_comment": "Built-in layer catalog. Edit this file to add your PERSEUS data sources. Each entry needs `name`, `type` ('cog' or 'geojson'), and either a single `url` or a `times` array of timesteps. Optional `style` applies to rasters (colormap, min, max).",
+  "_data_hosting": "Host your PERSEUS COGs on a CORS-enabled bucket (S3, R2, Azure Blob) so the browser can fetch byte-ranges. Set Access-Control-Allow-Origin: *.",
+
+  "layers": [
+    {
+      "name": "Eastern US states (sample)",
+      "description": "PERSEUS study region — Eastern US state boundaries",
+      "type": "geojson",
+      "url": "https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json"
+    },
+
+    {
+      "name": "Sample COG — elevation",
+      "description": "Example Cloud-Optimized GeoTIFF (swap for biomass/cover later)",
+      "type": "cog",
+      "url": "https://s3.amazonaws.com/elevation-tiles-prod/geotiff/0/0/0.tif",
+      "style": {
+        "colormap": "viridis"
+      }
+    },
+
+    {
+      "_comment": "Example of a time-series layer. Each timestep is one COG. The slider will appear automatically when this layer is visible.",
+      "name": "Biomass projection (example time series)",
+      "description": "Replace URLs with your per-year PERSEUS COGs",
+      "type": "cog",
+      "style": {
+        "colormap": "Greens",
+        "min": 0,
+        "max": 250
+      },
+      "times": [
+        { "label": "2025", "url": "https://example.com/perseus/biomass_2025.tif" },
+        { "label": "2030", "url": "https://example.com/perseus/biomass_2030.tif" },
+        { "label": "2040", "url": "https://example.com/perseus/biomass_2040.tif" },
+        { "label": "2050", "url": "https://example.com/perseus/biomass_2050.tif" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "perseus-map-viewer",
+  "version": "0.1.0",
+  "description": "Lightweight web map viewer for PERSEUS forest modeling outputs. Supports COG rasters, GeoJSON vectors, and time-series layers.",
+  "private": true,
+  "scripts": {
+    "start": "serve -s public -l ${PORT:-3000}",
+    "dev": "serve -s public -l 3000"
+  },
+  "dependencies": {
+    "serve": "^14.2.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

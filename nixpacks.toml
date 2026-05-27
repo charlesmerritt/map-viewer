@@ -1,0 +1,11 @@
+# Railway / Nixpacks build configuration.
+# The viewer is a pure static site; we just install `serve` and run it.
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm install --omit=dev || true", "npm install serve"]
+
+[start]
+cmd = "npx serve -s public -l $PORT"
