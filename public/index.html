@@ -28,6 +28,8 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <!-- D2S Client -->
+    <script src="d2s-client.js"></script>
     <div id="app">
       <aside id="sidebar" aria-label="Layer panel">
         <header class="sidebar-header">
@@ -62,6 +64,23 @@
         <section class="panel">
           <h2 class="panel-title">Built-in layers</h2>
           <ul id="builtin-list" class="builtin-list"></ul>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel-title">Data to Science</h2>
+          <div id="d2s-disconnected">
+            <p class="empty-hint" style="margin-bottom: 8px;">
+              Connect to a D2S instance to browse and load datasets.
+            </p>
+            <button id="d2s-connect-btn" class="btn-primary">Connect to D2S</button>
+          </div>
+          <div id="d2s-connected" class="hidden">
+            <div style="margin-bottom: 8px; font-size: 0.875rem; color: var(--text-secondary);">
+              Connected as <span id="d2s-user-email"></span>
+            </div>
+            <button id="d2s-disconnect-btn" class="btn-ghost" style="margin-bottom: 12px;">Disconnect</button>
+            <ul id="d2s-projects-list" class="builtin-list"></ul>
+          </div>
         </section>
 
         <footer class="sidebar-footer">
@@ -136,6 +155,7 @@
 
         <div class="tabs" role="tablist">
           <button class="tab active" data-tab="url" role="tab" aria-selected="true">From URL</button>
+          <button class="tab" data-tab="titiler" role="tab" aria-selected="false">TiTiler (COG)</button>
           <button class="tab" data-tab="file" role="tab" aria-selected="false">Upload file</button>
         </div>
 
@@ -190,6 +210,54 @@
           </details>
         </div>
 
+        <div class="tab-pane hidden" data-pane="titiler">
+          <label class="field">
+            <span>Layer name</span>
+            <input type="text" id="titiler-name" placeholder="e.g. Biomass 2030" />
+          </label>
+          <label class="field">
+            <span>COG URL</span>
+            <input
+              type="url"
+              id="titiler-url"
+              placeholder="https://… .tif"
+            />
+          </label>
+          <p class="hint">
+            Stream tiles from a Cloud-Optimized GeoTIFF via the D2S TiTiler service. No full-file download needed — works efficiently even for CONUS-scale rasters.
+          </p>
+          <details class="advanced">
+            <summary>Raster styling (optional)</summary>
+            <label class="field">
+              <span>Colormap</span>
+              <select id="titiler-colormap">
+                <option value="">(default — grayscale)</option>
+                <option value="viridis">viridis</option>
+                <option value="magma">magma</option>
+                <option value="inferno">inferno</option>
+                <option value="plasma">plasma</option>
+                <option value="cividis">cividis</option>
+                <option value="Greens">Greens (forest)</option>
+                <option value="YlGn">YlGn (vegetation)</option>
+                <option value="RdYlGn">RdYlGn (health)</option>
+                <option value="Spectral">Spectral</option>
+                <option value="terrain">terrain</option>
+                <option value="turbo">turbo</option>
+              </select>
+            </label>
+            <div class="field-row">
+              <label class="field">
+                <span>Min</span>
+                <input type="number" id="titiler-min" step="any" placeholder="auto" />
+              </label>
+              <label class="field">
+                <span>Max</span>
+                <input type="number" id="titiler-max" step="any" placeholder="auto" />
+              </label>
+            </div>
+          </details>
+        </div>
+
         <div class="tab-pane hidden" data-pane="file">
           <label class="field">
             <span>Layer name</span>
@@ -208,6 +276,51 @@
         <div class="modal-actions">
           <button class="btn-ghost" data-close-modal>Cancel</button>
           <button class="btn-primary" id="add-confirm">Add layer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- D2S Connection modal -->
+    <div id="d2s-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="d2s-modal-title">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3 id="d2s-modal-title">Connect to Data to Science</h3>
+          <button class="icon-btn" data-close-d2s-modal aria-label="Close">&times;</button>
+        </div>
+
+        <div style="padding: 20px;">
+          <label class="field">
+            <span>D2S Instance URL</span>
+            <input type="url" id="d2s-url" placeholder="https://ps2.d2s.org" value="https://ps2.d2s.org" />
+          </label>
+          
+          <div style="margin: 16px 0; padding: 12px; background: var(--bg-secondary); border-radius: 4px;">
+            <strong>Authentication Method:</strong> Use either API Key OR Email/Password
+          </div>
+
+          <label class="field">
+            <span>API Key (optional)</span>
+            <input type="password" id="d2s-api-key" placeholder="Your D2S API key" />
+          </label>
+
+          <div style="text-align: center; margin: 12px 0; color: var(--text-secondary);">— OR —</div>
+
+          <label class="field">
+            <span>Email</span>
+            <input type="email" id="d2s-email" placeholder="your@email.com" />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input type="password" id="d2s-password" />
+          </label>
+          <p class="hint">
+            Don't have an account? <a href="https://ps2.d2s.org" target="_blank" rel="noopener">Register at ps2.d2s.org</a>
+          </p>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-ghost" data-close-d2s-modal>Cancel</button>
+          <button class="btn-primary" id="d2s-login-btn">Connect</button>
         </div>
       </div>
     </div>

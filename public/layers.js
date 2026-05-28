@@ -129,14 +129,16 @@
 
   function normalizeToCanvas(rasters, width, height, style) {
     const numBands = rasters.length;
-    // Cap canvas size for very large imagery (e.g. NAIP)
-    const MAX_DIM = 2048;
+    // Cap canvas size for very large imagery (e.g. NAIP, Landfire)
+    const MAX_DIM = 4096;
+    const MAX_PIXELS = 4096 * 4096;
     let outW = width;
     let outH = height;
-    if (width > MAX_DIM || height > MAX_DIM) {
-      const scale = Math.min(MAX_DIM / width, MAX_DIM / height);
-      outW = Math.round(width * scale);
-      outH = Math.round(height * scale);
+    if (width > MAX_DIM || height > MAX_DIM || width * height > MAX_PIXELS) {
+      const scale = Math.min(MAX_DIM / width, MAX_DIM / height, Math.sqrt(MAX_PIXELS / (width * height)));
+      outW = Math.max(1, Math.round(width * scale));
+      outH = Math.max(1, Math.round(height * scale));
+      console.log(`[layers] Downsampling canvas from ${width}x${height} to ${outW}x${outH}`);
     }
     const canvas = document.createElement("canvas");
     canvas.width = outW;
@@ -236,10 +238,42 @@
 
   async function renderGeotiff(buffer, style) {
     const tiff = await GeoTIFF.fromArrayBuffer(buffer);
-    const image = await tiff.getImage();
-    const width = image.getWidth();
-    const height = image.getHeight();
-    const rasters = await image.readRasters({ interleave: false });
+    let image = await tiff.getImage();
+    let width = image.getWidth();
+    let height = image.getHeight();
+    
+    // For very large images, try to use overview/pyramid if available
+    const MAX_PIXELS = 2048 * 2048;
+    if (width * height > MAX_PIXELS) {
+      const imageCount = await tiff.getImageCount();
+      if (imageCount > 1) {
+        // Try to find a suitable overview
+        for (let i = 1; i < imageCount; i++) {
+          const overview = await tiff.getImage(i);
+          const ow = overview.getWidth();
+          const oh = overview.getHeight();
+          if (ow * oh <= MAX_PIXELS) {
+            console.log(`[layers] Using overview ${i} (${ow}x${oh}) instead of full res (${width}x${height})`);
+            image = overview;
+            width = ow;
+            height = oh;
+            break;
+          }
+        }
+      }
+    }
+    
+    let rasters;
+    try {
+      rasters = await image.readRasters({ interleave: false });
+    } catch (err) {
+      throw new Error(
+        `Failed to read raster data (${width}x${height}px). ` +
+        `File may be too large or corrupted. Try a smaller file or Cloud-Optimized GeoTIFF. ` +
+        `Original error: ${err.message || err}`
+      );
+    }
+    
     const canvas = normalizeToCanvas(rasters, width, height, style);
     return { canvas, image };
   }
@@ -366,14 +400,14 @@
     }
 
     let buffer;
+    let isLargeFile = false;
+    
     if (source instanceof ArrayBuffer || source instanceof Uint8Array) {
       buffer = source;
+      isLargeFile = buffer.byteLength > 10 * 1024 * 1024; // >10MB
     } else if (typeof source === "string") {
       const { supportsRange } = await probeRaster(source);
       if (supportsRange) {
-        // For URL-based COGs that support range requests, we would ideally
-        // stream. MapLibre cannot natively render streamed GeoTIFFs, so we
-        // download the whole file and render to canvas.
         console.warn(
           "[layers] " + source + ": downloading whole file for canvas rendering."
         );
@@ -385,13 +419,28 @@
         );
       }
       buffer = await full.arrayBuffer();
+      isLargeFile = buffer.byteLength > 10 * 1024 * 1024;
     } else {
       throw new Error("Unsupported raster source type");
     }
 
     await validateGeotiff(buffer);
 
-    const [{ canvas, image }, bounds] = await Promise.all([
+    // Check dimensions
+    const tiff = await GeoTIFF.fromArrayBuffer(buffer);
+    const image = await tiff.getImage();
+    const width = image.getWidth();
+    const height = image.getHeight();
+    const isLargeDimensions = width > 8192 || height > 8192 || width * height > 16 * 1024 * 1024;
+
+    if (isLargeFile || isLargeDimensions) {
+      console.warn(
+        `[layers] Large COG detected (${width}x${height}, ${(buffer.byteLength / 1024 / 1024).toFixed(1)}MB). ` +
+        `For optimal performance with CONUS-scale imagery, consider using a tile server or hosting as a proper COG with overviews.`
+      );
+    }
+
+    const [{ canvas, image: img }, bounds] = await Promise.all([
       renderGeotiff(buffer, style),
       extractGeotiffBounds(buffer),
     ]);
@@ -400,8 +449,8 @@
       dataUrl: canvas.toDataURL("image/png"),
       coordinates: bounds.coordinates,
       bounds: bounds.bbox4326,
-      width: image.getWidth(),
-      height: image.getHeight(),
+      width: img.getWidth(),
+      height: img.getHeight(),
     };
   }
 
@@ -602,7 +651,7 @@
     layer.opacity = opacity;
     const map = State.getMap();
     if (layer.layerId) {
-      if (layer.type === "cog") {
+      if (layer.type === "cog" || layer.type === "d2s-raster") {
         map.setPaintProperty(layer.layerId, "raster-opacity", opacity);
       } else if (layer.type === "geojson") {
         map.setPaintProperty(layer.layerId, "fill-opacity", 0.18 * opacity);
@@ -682,9 +731,88 @@
     State.reconcileActiveTimeLayer();
   }
 
+  async function addD2STileLayer(cfg) {
+    const map = State.getMap();
+    if (!map) throw new Error("Map not ready");
+
+    const id = State.nextId("d2s-tile");
+
+    const entry = {
+      id,
+      name: cfg.name || "D2S Tile Layer",
+      type: "d2s-raster",
+      visible: cfg.visible !== false,
+      opacity: cfg.opacity != null ? cfg.opacity : 1,
+      sourceId: null,
+      layerId: null,
+      loading: true,
+      error: null,
+      sourceDesc: cfg.sourceDesc || "D2S TiTiler",
+    };
+
+    State.addLayer(entry);
+
+    try {
+      const srcId = sourceId(id, "source");
+      const lyrId = sourceId(id, "layer");
+      entry.sourceId = srcId;
+      entry.layerId = lyrId;
+
+      // Add MapLibre raster tile source
+      map.addSource(srcId, {
+        type: "raster",
+        tiles: [cfg.tileUrl],
+        tileSize: 256,
+        bounds: cfg.bounds, // [minx, miny, maxx, maxy]
+      });
+
+      map.addLayer({
+        id: lyrId,
+        type: "raster",
+        source: srcId,
+        paint: {
+          "raster-opacity": entry.opacity,
+        },
+      });
+
+      if (!entry.visible) {
+        map.setLayoutProperty(lyrId, "visibility", "none");
+      }
+
+      // Store bounds for zoom-to-layer
+      if (cfg.bounds && cfg.bounds.length === 4) {
+        entry.__bounds = cfg.bounds;
+      }
+
+      // Ensure basemap stays at bottom
+      if (map.getLayer("basemap")) {
+        const allLayers = map.getStyle().layers;
+        const firstNonBase = allLayers.find((l) => l.id !== "basemap");
+        if (firstNonBase) map.moveLayer("basemap", firstNonBase.id);
+      }
+
+      // Fit to bounds if first layer
+      if (entry.__bounds) {
+        const otherLayers = State.getLayers().filter((l) => l.id !== id);
+        if (otherLayers.length === 0) {
+          map.fitBounds(entry.__bounds, { padding: 40, maxZoom: 12 });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load D2S tile layer", entry.name, err);
+      entry.error = err.message || String(err);
+    } finally {
+      entry.loading = false;
+      State.updateLayer(id, {});
+    }
+
+    return entry;
+  }
+
   window.Layers = {
     detectType,
     addLayerFromConfig,
+    addD2STileLayer,
     setLayerVisible,
     setLayerOpacity,
     setLayerTimeIndex,

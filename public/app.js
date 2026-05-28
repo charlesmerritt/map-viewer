@@ -165,7 +165,7 @@
 
       const meta = document.createElement("div");
       meta.className = "layer-meta";
-      meta.textContent = layer.type === "cog" ? "RASTER" : "VECTOR";
+      meta.textContent = (layer.type === "cog" || layer.type === "d2s-raster") ? "RASTER" : "VECTOR";
       row.appendChild(meta);
 
       const actions = document.createElement("div");
@@ -365,6 +365,11 @@
     document.getElementById("url-colormap").value = "";
     document.getElementById("url-min").value = "";
     document.getElementById("url-max").value = "";
+    document.getElementById("titiler-name").value = "";
+    document.getElementById("titiler-url").value = "";
+    document.getElementById("titiler-colormap").value = "";
+    document.getElementById("titiler-min").value = "";
+    document.getElementById("titiler-max").value = "";
     document.getElementById("file-name").value = "";
     document.getElementById("file-input").value = "";
   }
@@ -393,6 +398,15 @@
           source: { kind: "url", url },
           style,
         });
+        State.toast(`Added: ${name}`, "success");
+      } else if (activeTab === "titiler") {
+        const cogUrl = document.getElementById("titiler-url").value.trim();
+        if (!cogUrl) throw new Error("COG URL is required");
+        const name =
+          document.getElementById("titiler-name").value.trim() ||
+          guessName(cogUrl);
+        const style = buildTiTilerStyleFromForm();
+        await addTiTilerLayer(name, cogUrl, style);
         State.toast(`Added: ${name}`, "success");
       } else {
         const fileInput = document.getElementById("file-input");
@@ -426,6 +440,67 @@
       min: minRaw === "" ? null : Number(minRaw),
       max: maxRaw === "" ? null : Number(maxRaw),
     };
+  }
+
+  function buildTiTilerStyleFromForm() {
+    const colormap = document.getElementById("titiler-colormap").value || null;
+    const minRaw = document.getElementById("titiler-min").value;
+    const maxRaw = document.getElementById("titiler-max").value;
+    if (!colormap && minRaw === "" && maxRaw === "") return null;
+    return {
+      colormap_name: colormap || null,
+      min: minRaw === "" ? null : Number(minRaw),
+      max: maxRaw === "" ? null : Number(maxRaw),
+    };
+  }
+
+  async function addTiTilerLayer(name, cogUrl, style) {
+    // Fetch bounds and info from TiTiler in parallel
+    const [boundsData, infoData] = await Promise.all([
+      fetch(`${window.D2S.getTiTilerBase()}/cog/bounds?url=${encodeURIComponent(cogUrl)}`).then(r => {
+        if (!r.ok) throw new Error(`TiTiler bounds request failed: ${r.status}`);
+        return r.json();
+      }),
+      fetch(`${window.D2S.getTiTilerBase()}/cog/info?url=${encodeURIComponent(cogUrl)}`).then(r => {
+        if (!r.ok) throw new Error(`TiTiler info request failed: ${r.status}`);
+        return r.json();
+      }),
+    ]);
+
+    const bounds = boundsData.bounds; // [minx, miny, maxx, maxy] in EPSG:4326
+
+    // Build visualization options
+    const vizOptions = {};
+    const bandCount = infoData.count || 1;
+
+    if (bandCount === 1) {
+      vizOptions.bidx = "1";
+      if (style && style.colormap_name) {
+        vizOptions.colormap_name = style.colormap_name;
+      }
+      // Auto-rescale from band statistics if no explicit min/max
+      const stats = infoData.band_metadata && infoData.band_metadata[0] && infoData.band_metadata[0][1];
+      if (style && style.min != null && style.max != null) {
+        vizOptions.rescale = `${style.min},${style.max}`;
+      } else if (stats && stats.STATISTICS_MINIMUM != null && stats.STATISTICS_MAXIMUM != null) {
+        vizOptions.rescale = `${stats.STATISTICS_MINIMUM},${stats.STATISTICS_MAXIMUM}`;
+      }
+    } else if (bandCount >= 3) {
+      vizOptions.bidx = "1,2,3";
+    }
+
+    const tileUrl = `${window.D2S.getTiTilerBase()}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=${encodeURIComponent(cogUrl)}` +
+      (vizOptions.bidx ? `&bidx=${vizOptions.bidx}` : '') +
+      (vizOptions.colormap_name ? `&colormap_name=${vizOptions.colormap_name}` : '') +
+      (vizOptions.rescale ? `&rescale=${encodeURIComponent(vizOptions.rescale)}` : '');
+
+    await Layers.addD2STileLayer({
+      name,
+      tileUrl,
+      bounds,
+      type: "raster",
+      sourceDesc: "TiTiler: " + cogUrl.split("/").pop(),
+    });
   }
 
   function guessName(url) {
@@ -470,6 +545,290 @@
     });
   }
 
+  // ---- D2S Integration ----
+
+  function initD2S() {
+    const modal = document.getElementById("d2s-modal");
+    const connectBtn = document.getElementById("d2s-connect-btn");
+    const loginBtn = document.getElementById("d2s-login-btn");
+    const disconnectBtn = document.getElementById("d2s-disconnect-btn");
+    const closes = modal.querySelectorAll("[data-close-d2s-modal]");
+
+    connectBtn.addEventListener("click", () => {
+      modal.classList.remove("hidden");
+    });
+
+    closes.forEach((c) =>
+      c.addEventListener("click", () => modal.classList.add("hidden"))
+    );
+
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) modal.classList.add("hidden");
+    });
+
+    loginBtn.addEventListener("click", async () => {
+      const url = document.getElementById("d2s-url").value.trim();
+      const email = document.getElementById("d2s-email").value.trim();
+      const password = document.getElementById("d2s-password").value;
+      const apiKey = document.getElementById("d2s-api-key")?.value.trim();
+
+      if (!url) {
+        State.toast("Please enter D2S instance URL", "error");
+        return;
+      }
+
+      // Allow either login credentials OR API key
+      if (!apiKey && (!email || !password)) {
+        State.toast("Please provide either API key or email/password", "error");
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = "Connecting...";
+
+      try {
+        const client = window.D2S.connect(url, apiKey);
+        
+        // If credentials provided, attempt login
+        if (email && password) {
+          await client.login(email, password);
+          showD2SConnected(client.user.email);
+        } else {
+          // Using API key only
+          showD2SConnected("API Key");
+        }
+        
+        modal.classList.add("hidden");
+        document.getElementById("d2s-password").value = "";
+        
+        await loadD2SProjects();
+        
+        State.toast("Connected to D2S", "success");
+      } catch (err) {
+        console.error("D2S login failed:", err);
+        State.toast(err.message || "Failed to connect to D2S", "error");
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "Connect";
+      }
+    });
+
+    disconnectBtn.addEventListener("click", () => {
+      window.D2S.disconnect();
+      showD2SDisconnected();
+      State.toast("Disconnected from D2S", "success");
+    });
+  }
+
+  function showD2SConnected(email) {
+    document.getElementById("d2s-disconnected").classList.add("hidden");
+    document.getElementById("d2s-connected").classList.remove("hidden");
+    document.getElementById("d2s-user-email").textContent = email;
+  }
+
+  function showD2SDisconnected() {
+    document.getElementById("d2s-disconnected").classList.remove("hidden");
+    document.getElementById("d2s-connected").classList.add("hidden");
+    document.getElementById("d2s-projects-list").innerHTML = "";
+  }
+
+  async function loadD2SProjects() {
+    const list = document.getElementById("d2s-projects-list");
+    list.innerHTML = "<li class='empty-hint'>Loading projects...</li>";
+
+    try {
+      const client = window.D2S.getClient();
+      const projects = await client.fetchProjects();
+
+      list.innerHTML = "";
+
+      if (!projects || projects.length === 0) {
+        list.innerHTML = "<li class='empty-hint'>No projects found</li>";
+        return;
+      }
+
+      projects.forEach((project) => {
+        const li = document.createElement("li");
+        li.className = "builtin-item";
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const nm = document.createElement("span");
+        nm.className = "name";
+        nm.textContent = project.title || project.name;
+        meta.appendChild(nm);
+        li.appendChild(meta);
+
+        const btn = document.createElement("button");
+        btn.className = "btn-ghost";
+        btn.textContent = "Browse";
+        btn.addEventListener("click", () => loadD2SFlights(project));
+        li.appendChild(btn);
+
+        list.appendChild(li);
+      });
+    } catch (err) {
+      console.error("Failed to load D2S projects:", err);
+      list.innerHTML = "<li class='empty-hint'>Failed to load projects</li>";
+      State.toast("Failed to load D2S projects", "error");
+    }
+  }
+
+  async function loadD2SFlights(project) {
+    const list = document.getElementById("d2s-projects-list");
+    list.innerHTML = "<li class='empty-hint'>Loading flights...</li>";
+
+    try {
+      const client = window.D2S.getClient();
+      const flights = await client.fetchFlights(project.id);
+
+      list.innerHTML = "";
+
+      const backBtn = document.createElement("li");
+      backBtn.innerHTML = '<button class="btn-ghost" style="width:100%">← Back to projects</button>';
+      backBtn.querySelector("button").addEventListener("click", loadD2SProjects);
+      list.appendChild(backBtn);
+
+      if (!flights || flights.length === 0) {
+        const empty = document.createElement("li");
+        empty.className = "empty-hint";
+        empty.textContent = "No flights found";
+        list.appendChild(empty);
+        return;
+      }
+
+      flights.forEach((flight) => {
+        const li = document.createElement("li");
+        li.className = "builtin-item";
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const nm = document.createElement("span");
+        nm.className = "name";
+        nm.textContent = flight.name;
+        meta.appendChild(nm);
+        li.appendChild(meta);
+
+        const btn = document.createElement("button");
+        btn.className = "btn-ghost";
+        btn.textContent = "Load Data";
+        btn.addEventListener("click", () => loadD2SDataProducts(project, flight));
+        li.appendChild(btn);
+
+        list.appendChild(li);
+      });
+    } catch (err) {
+      console.error("Failed to load D2S flights:", err);
+      list.innerHTML = "<li class='empty-hint'>Failed to load flights</li>";
+      State.toast("Failed to load D2S flights", "error");
+    }
+  }
+
+  async function loadD2SDataProducts(project, flight) {
+    try {
+      const client = window.D2S.getClient();
+      const products = await client.fetchDataProducts(project.id, flight.id);
+
+      if (!products || products.length === 0) {
+        State.toast("No data products found for this flight", "error");
+        return;
+      }
+
+      let addedCount = 0;
+
+      for (const product of products) {
+        const name = `${flight.name} - ${product.name || product.filepath}`;
+
+        if (client.isRasterType(product)) {
+          // Use TiTiler for raster data products
+          try {
+            // Get metadata from public endpoint
+            const info = await client.getDataProductInfo(product.id);
+
+            // Build the S3 COG URL from the data product info
+            const cogUrl = info.url || info.filepath || null;
+            if (!cogUrl) {
+              console.warn(`No URL found for raster product ${product.name}`);
+              continue;
+            }
+
+            // Use TiTiler to get bounds and build tile URL
+            const [boundsData, titilerInfo] = await Promise.all([
+              client.fetchTiTilerBounds(cogUrl).catch(() => null),
+              client.fetchTiTilerInfo(cogUrl).catch(() => null),
+            ]);
+
+            let bounds = null;
+            if (boundsData && boundsData.bounds) {
+              bounds = boundsData.bounds;
+            } else if (info.geometry && info.geometry.coordinates) {
+              const coords = info.geometry.coordinates[0];
+              const lons = coords.map(c => c[0]);
+              const lats = coords.map(c => c[1]);
+              bounds = [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+            }
+
+            // Build visualization options from TiTiler info
+            const vizOptions = {};
+            const bandCount = titilerInfo ? (titilerInfo.count || 1) : 1;
+
+            if (bandCount === 1) {
+              vizOptions.bidx = "1";
+              vizOptions.colormap_name = "viridis";
+              // Auto-rescale from band statistics
+              const stats = titilerInfo && titilerInfo.band_metadata && titilerInfo.band_metadata[0] && titilerInfo.band_metadata[0][1];
+              if (stats && stats.STATISTICS_MINIMUM != null && stats.STATISTICS_MAXIMUM != null) {
+                vizOptions.rescale = `${stats.STATISTICS_MINIMUM},${stats.STATISTICS_MAXIMUM}`;
+              }
+            } else if (bandCount >= 3) {
+              vizOptions.bidx = "1,2,3";
+            }
+
+            const tileUrl = client.buildTiTilerTileUrl(cogUrl, vizOptions);
+
+            await Layers.addD2STileLayer({
+              name,
+              tileUrl,
+              bounds,
+              type: "raster",
+              sourceDesc: "D2S TiTiler",
+            });
+            addedCount++;
+          } catch (err) {
+            console.warn(`Failed to load raster product ${product.name}:`, err);
+          }
+        } else if (client.isVectorType(product)) {
+          // For vector data, use direct download for now
+          // TODO: Add pg_tileserv vector tile support
+          try {
+            const url = await client.getDataProductDownloadUrl(product.id);
+            const type = Layers.detectType(product.filepath || product.name, "auto");
+
+            if (type) {
+              await Layers.addLayerFromConfig({
+                name,
+                type,
+                source: { kind: "url", url },
+              });
+              addedCount++;
+            }
+          } catch (err) {
+            console.warn(`Failed to load vector product ${product.name}:`, err);
+          }
+        }
+      }
+
+      if (addedCount > 0) {
+        State.toast(`Added ${addedCount} layer(s) from ${flight.name}`, "success");
+      } else {
+        State.toast("No compatible data products found", "error");
+      }
+    } catch (err) {
+      console.error("Failed to load D2S data products:", err);
+      State.toast("Failed to load data products", "error");
+    }
+  }
+
   // ---- Bootstrap ----
 
   function boot() {
@@ -478,6 +837,7 @@
     initAddModal();
     initSidebarToggle();
     initToast();
+    initD2S();
 
     State.on("layers:changed", renderLayerList);
     State.on("layer:updated", renderLayerList);
