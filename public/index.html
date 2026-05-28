@@ -57,30 +57,8 @@
           </div>
           <ul id="layer-list" class="layer-list" aria-live="polite"></ul>
           <p id="layer-empty" class="empty-hint">
-            No layers yet. Add one from the built-ins below, paste a URL, or upload a file.
+            No layers yet. Paste a URL, add a TiTiler COG, or upload a file.
           </p>
-        </section>
-
-        <section class="panel">
-          <h2 class="panel-title">Built-in layers</h2>
-          <ul id="builtin-list" class="builtin-list"></ul>
-        </section>
-
-        <section class="panel">
-          <h2 class="panel-title">Data to Science</h2>
-          <div id="d2s-disconnected">
-            <p class="empty-hint" style="margin-bottom: 8px;">
-              Connect to a D2S instance to browse and load datasets.
-            </p>
-            <button id="d2s-connect-btn" class="btn-primary">Connect to D2S</button>
-          </div>
-          <div id="d2s-connected" class="hidden">
-            <div style="margin-bottom: 8px; font-size: 0.875rem; color: var(--text-secondary);">
-              Connected as <span id="d2s-user-email"></span>
-            </div>
-            <button id="d2s-disconnect-btn" class="btn-ghost" style="margin-bottom: 12px;">Disconnect</button>
-            <ul id="d2s-projects-list" class="builtin-list"></ul>
-          </div>
         </section>
 
         <footer class="sidebar-footer">
@@ -154,63 +132,12 @@
         </div>
 
         <div class="tabs" role="tablist">
-          <button class="tab active" data-tab="url" role="tab" aria-selected="true">From URL</button>
-          <button class="tab" data-tab="titiler" role="tab" aria-selected="false">TiTiler (COG)</button>
+          <button class="tab active" data-tab="titiler" role="tab" aria-selected="true">TiTiler (COG)</button>
+          <button class="tab" data-tab="builtin" role="tab" aria-selected="false">Built-in</button>
           <button class="tab" data-tab="file" role="tab" aria-selected="false">Upload file</button>
         </div>
 
-        <div class="tab-pane" data-pane="url">
-          <label class="field">
-            <span>Layer name</span>
-            <input type="text" id="url-name" placeholder="e.g. Biomass 2030" />
-          </label>
-          <label class="field">
-            <span>URL</span>
-            <input
-              type="url"
-              id="url-input"
-              placeholder="https://… .tif  |  .geojson  |  .json"
-            />
-          </label>
-          <label class="field">
-            <span>Type</span>
-            <select id="url-type">
-              <option value="auto">Auto-detect from extension</option>
-              <option value="cog">Cloud-Optimized GeoTIFF (raster)</option>
-              <option value="geojson">GeoJSON (vector)</option>
-            </select>
-          </label>
-          <details class="advanced">
-            <summary>Raster styling (optional)</summary>
-            <label class="field">
-              <span>Colormap</span>
-              <select id="url-colormap">
-                <option value="">(default — grayscale)</option>
-                <option value="viridis">viridis</option>
-                <option value="magma">magma</option>
-                <option value="inferno">inferno</option>
-                <option value="plasma">plasma</option>
-                <option value="cividis">cividis</option>
-                <option value="Greens">Greens (forest)</option>
-                <option value="YlGn">YlGn (vegetation)</option>
-                <option value="RdYlGn">RdYlGn (health)</option>
-                <option value="Spectral">Spectral</option>
-              </select>
-            </label>
-            <div class="field-row">
-              <label class="field">
-                <span>Min</span>
-                <input type="number" id="url-min" step="any" placeholder="auto" />
-              </label>
-              <label class="field">
-                <span>Max</span>
-                <input type="number" id="url-max" step="any" placeholder="auto" />
-              </label>
-            </div>
-          </details>
-        </div>
-
-        <div class="tab-pane hidden" data-pane="titiler">
+        <div class="tab-pane" data-pane="titiler">
           <label class="field">
             <span>Layer name</span>
             <input type="text" id="titiler-name" placeholder="e.g. Biomass 2030" />
@@ -243,6 +170,7 @@
                 <option value="Spectral">Spectral</option>
                 <option value="terrain">terrain</option>
                 <option value="turbo">turbo</option>
+                <option value="jet">jet</option>
               </select>
             </label>
             <div class="field-row">
@@ -255,7 +183,29 @@
                 <input type="number" id="titiler-max" step="any" placeholder="auto" />
               </label>
             </div>
+            <label class="field">
+              <span>Scaler</span>
+              <select id="titiler-scaler">
+                <option value="">Default</option>
+                <option value="nearest">nearest</option>
+                <option value="bilinear">bilinear</option>
+                <option value="cubic">cubic</option>
+                <option value="cubic_spline">cubic spline</option>
+                <option value="lanczos">lanczos</option>
+                <option value="average">average</option>
+                <option value="mode">mode</option>
+                <option value="max">max</option>
+                <option value="min">min</option>
+                <option value="med">median</option>
+                <option value="q1">q1</option>
+                <option value="q3">q3</option>
+              </select>
+            </label>
           </details>
+        </div>
+
+        <div class="tab-pane hidden" data-pane="builtin">
+          <ul id="builtin-list" class="builtin-list"></ul>
         </div>
 
         <div class="tab-pane hidden" data-pane="file">
@@ -276,51 +226,6 @@
         <div class="modal-actions">
           <button class="btn-ghost" data-close-modal>Cancel</button>
           <button class="btn-primary" id="add-confirm">Add layer</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- D2S Connection modal -->
-    <div id="d2s-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="d2s-modal-title">
-      <div class="modal-card">
-        <div class="modal-head">
-          <h3 id="d2s-modal-title">Connect to Data to Science</h3>
-          <button class="icon-btn" data-close-d2s-modal aria-label="Close">&times;</button>
-        </div>
-
-        <div style="padding: 20px;">
-          <label class="field">
-            <span>D2S Instance URL</span>
-            <input type="url" id="d2s-url" placeholder="https://ps2.d2s.org" value="https://ps2.d2s.org" />
-          </label>
-          
-          <div style="margin: 16px 0; padding: 12px; background: var(--bg-secondary); border-radius: 4px;">
-            <strong>Authentication Method:</strong> Use either API Key OR Email/Password
-          </div>
-
-          <label class="field">
-            <span>API Key (optional)</span>
-            <input type="password" id="d2s-api-key" placeholder="Your D2S API key" />
-          </label>
-
-          <div style="text-align: center; margin: 12px 0; color: var(--text-secondary);">— OR —</div>
-
-          <label class="field">
-            <span>Email</span>
-            <input type="email" id="d2s-email" placeholder="your@email.com" />
-          </label>
-          <label class="field">
-            <span>Password</span>
-            <input type="password" id="d2s-password" />
-          </label>
-          <p class="hint">
-            Don't have an account? <a href="https://ps2.d2s.org" target="_blank" rel="noopener">Register at ps2.d2s.org</a>
-          </p>
-        </div>
-
-        <div class="modal-actions">
-          <button class="btn-ghost" data-close-d2s-modal>Cancel</button>
-          <button class="btn-primary" id="d2s-login-btn">Connect</button>
         </div>
       </div>
     </div>

@@ -218,6 +218,17 @@ select:focus {
   flex-direction: column;
   gap: 8px;
 }
+.layer-card[draggable="true"] {
+  cursor: grab;
+}
+.layer-card.dragging {
+  cursor: grabbing;
+  opacity: 0.55;
+}
+.layer-card.drag-over {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 .layer-row {
   display: flex;
   align-items: center;
@@ -263,6 +274,82 @@ select:focus {
   color: var(--text-dim);
   min-width: 32px;
   text-align: right;
+}
+
+.layer-colormap-select {
+  flex: 1;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.layer-colormap-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.layer-color-ramp {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.layer-ramp-value {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1;
+  min-width: 44px;
+}
+.layer-ramp-bar {
+  flex: 1;
+  height: 14px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.ramp-grayscale {
+  background: linear-gradient(to right, #000000, #ffffff);
+}
+.ramp-viridis {
+  background: linear-gradient(to right, #440154, #3b528b, #21918c, #5ec962, #fde725);
+}
+.ramp-magma {
+  background: linear-gradient(to right, #000004, #51127c, #b73779, #fb8861, #fcfdbf);
+}
+.ramp-inferno {
+  background: linear-gradient(to right, #000004, #57106e, #bc3754, #f98e09, #fcffa4);
+}
+.ramp-plasma {
+  background: linear-gradient(to right, #0d0887, #7e03a8, #cc4778, #f89441, #f0f921);
+}
+.ramp-cividis {
+  background: linear-gradient(to right, #00204d, #213b6e, #575d6d, #a59c74, #fee838);
+}
+.ramp-greens {
+  background: linear-gradient(to right, #f7fcf5, #c7e9c0, #74c476, #238b45, #00441b);
+}
+.ramp-ylgn {
+  background: linear-gradient(to right, #ffffcc, #addd8e, #31a354, #006837);
+}
+.ramp-rdylgn {
+  background: linear-gradient(to right, #a50026, #fdae61, #ffffbf, #a6d96a, #006837);
+}
+.ramp-spectral {
+  background: linear-gradient(to right, #9e0142, #f46d43, #ffffbf, #66c2a5, #3288bd, #5e4fa2);
+}
+.ramp-terrain {
+  background: linear-gradient(to right, #27408b, #2f83bd, #69a761, #b8a57a, #ffffff);
+}
+.ramp-turbo {
+  background: linear-gradient(to right, #30123b, #3e4cec, #23c3a2, #f2f921, #f98c0a, #7a0403);
+}
+.ramp-jet {
+  background: linear-gradient(to right, #00007f, #0000ff, #00ffff, #ffff00, #ff0000, #7f0000);
 }
 
 .layer-error {

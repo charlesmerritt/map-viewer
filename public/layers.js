@@ -731,6 +731,37 @@
     State.reconcileActiveTimeLayer();
   }
 
+  function renderedLayerIds(layer) {
+    if (!layer.layerId) return [];
+    if (layer.type === "geojson") {
+      return [layer.layerId, layer.layerId + "_line", layer.layerId + "_circle"];
+    }
+    return [layer.layerId];
+  }
+
+  function applyLayerOrder() {
+    const map = State.getMap();
+    if (!map) return;
+    const layers = State.getLayers();
+    layers.forEach((layer) => {
+      renderedLayerIds(layer).forEach((id) => {
+        if (map.getLayer(id)) map.moveLayer(id);
+      });
+    });
+    if (map.getLayer("basemap")) {
+      const allLayers = map.getStyle().layers;
+      const firstNonBase = allLayers.find((l) => l.id !== "basemap");
+      if (firstNonBase) map.moveLayer("basemap", firstNonBase.id);
+    }
+  }
+
+  function reorderLayersFromTopIds(topOrderedIds) {
+    const bottomOrderedIds = topOrderedIds.slice().reverse();
+    State.reorderLayers(bottomOrderedIds);
+    applyLayerOrder();
+    State.reconcileActiveTimeLayer();
+  }
+
   async function addD2STileLayer(cfg) {
     const map = State.getMap();
     if (!map) throw new Error("Map not ready");
@@ -748,6 +779,8 @@
       loading: true,
       error: null,
       sourceDesc: cfg.sourceDesc || "D2S TiTiler",
+      cogUrl: cfg.cogUrl || null,
+      vizOptions: cfg.vizOptions ? { ...cfg.vizOptions } : null,
     };
 
     State.addLayer(entry);
@@ -809,12 +842,77 @@
     return entry;
   }
 
+  function updateD2STileLayer(layer, patch) {
+    if (layer.type !== "d2s-raster" || !layer.cogUrl || !layer.vizOptions) return;
+
+    const map = State.getMap();
+    if (!map || !layer.sourceId) return;
+
+    Object.entries(patch).forEach(([key, value]) => {
+      if (value) {
+        layer.vizOptions[key] = value;
+      } else {
+        delete layer.vizOptions[key];
+      }
+    });
+
+    // Rebuild tile URL
+    const tileUrl = window.D2S.buildTiTilerTileUrl(layer.cogUrl, layer.vizOptions);
+
+    // Swap the source tiles — must remove layer first, then source, then re-add both
+    const currentSource = map.getSource(layer.sourceId);
+    const bounds = currentSource ? currentSource.bounds : layer.__bounds;
+
+    // Capture current layer position so we can re-insert at the same spot
+    const styleLayers = map.getStyle().layers;
+    const layerIndex = styleLayers.findIndex(l => l.id === layer.layerId);
+    const beforeId = layerIndex >= 0 && layerIndex + 1 < styleLayers.length
+      ? styleLayers[layerIndex + 1].id
+      : undefined;
+
+    if (map.getLayer(layer.layerId)) map.removeLayer(layer.layerId);
+    map.removeSource(layer.sourceId);
+
+    map.addSource(layer.sourceId, {
+      type: "raster",
+      tiles: [tileUrl],
+      tileSize: 256,
+      bounds: bounds,
+    });
+
+    map.addLayer({
+      id: layer.layerId,
+      type: "raster",
+      source: layer.sourceId,
+      paint: {
+        "raster-opacity": layer.opacity,
+      },
+    }, beforeId);
+
+    if (!layer.visible) {
+      map.setLayoutProperty(layer.layerId, "visibility", "none");
+    }
+
+    State.updateLayer(layer.id, { vizOptions: { ...layer.vizOptions } });
+  }
+
+  function setLayerColormap(layer, colormapName) {
+    updateD2STileLayer(layer, { colormap_name: colormapName });
+  }
+
+  function setLayerResampling(layer, resampling) {
+    updateD2STileLayer(layer, { resampling });
+  }
+
   window.Layers = {
     detectType,
     addLayerFromConfig,
     addD2STileLayer,
     setLayerVisible,
     setLayerOpacity,
+    setLayerColormap,
+    setLayerResampling,
+    reorderLayersFromTopIds,
     setLayerTimeIndex,
     removeLayer,
   };

@@ -60,6 +60,14 @@
     emit("layers:changed");
     return layer;
   }
+  function reorderLayers(orderedIds) {
+    if (!Array.isArray(orderedIds) || orderedIds.length !== layers.length) return;
+    const byId = new Map(layers.map((layer) => [layer.id, layer]));
+    const next = orderedIds.map((id) => byId.get(id));
+    if (next.some((layer) => !layer)) return;
+    layers.splice(0, layers.length, ...next);
+    emit("layers:changed");
+  }
 
   // ---- Map handle ----
 
@@ -122,6 +130,7 @@
     addLayer,
     removeLayer,
     updateLayer,
+    reorderLayers,
     setMap,
     getMap,
     setActiveTimeLayer,

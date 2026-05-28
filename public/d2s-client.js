@@ -191,14 +191,7 @@
     }
 
     buildTiTilerTileUrl(cogUrl, options = {}) {
-      const titilerBase = window.D2S.getTiTilerBase();
-      const params = new URLSearchParams();
-      params.append("url", cogUrl);
-      if (options.colormap_name) params.append("colormap_name", options.colormap_name);
-      if (options.rescale) params.append("rescale", options.rescale);
-      if (options.bidx) params.append("bidx", options.bidx);
-      if (options.resampling) params.append("resampling", options.resampling);
-      return `${titilerBase}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?${params.toString()}`;
+      return window.D2S.buildTiTilerTileUrl(cogUrl, options);
     }
   }
 
@@ -238,6 +231,16 @@
 
     setTiTilerBase(url) {
       titilerBase = url.replace(/\/$/, "");
+    },
+
+    buildTiTilerTileUrl(cogUrl, options = {}) {
+      const params = new URLSearchParams();
+      params.append("url", cogUrl);
+      if (options.colormap_name) params.append("colormap_name", options.colormap_name);
+      if (options.rescale) params.append("rescale", options.rescale);
+      if (options.bidx) params.append("bidx", options.bidx);
+      if (options.resampling) params.append("resampling", options.resampling);
+      return `${titilerBase}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?${params.toString()}`;
     },
   };
 })();

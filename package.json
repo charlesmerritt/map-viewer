@@ -8,6 +8,7 @@
     "dev": "serve -s public -l 3000"
   },
   "dependencies": {
+    "playwright": "^1.60.0",
     "serve": "^14.2.4"
   },
   "engines": {
