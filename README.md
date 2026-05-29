@@ -14,6 +14,8 @@ database. The Railway deployment is just a static file server.
 - **Base layers** — Carto Dark/Voyager, OpenStreetMap, Esri World Imagery, OpenTopoMap.
 - **User layers** — add by pasting a URL (COG or GeoJSON), uploading a local file, or
   picking from the built-in catalog (`public/layers.json`).
+- **Built-in boundaries** — toggle simplified US state and county polygons, including
+  all states, all counties, all counties in a state, and individual states/counties.
 - **Per-layer controls** — visibility toggle, opacity slider, zoom-to-extent, remove.
 - **Raster styling** — choose a colormap (viridis, magma, Greens, RdYlGn, …) and
   optionally pin min/max for the color stretch.
@@ -29,14 +31,18 @@ You need Node 18+.
 
 ```bash
 cd map-viewer
-npm install
-npm run dev
+corepack enable
+pnpm install
+pnpm dev
 # open http://localhost:3000
 ```
 
 Since this is a pure static app, you can also serve `public/` with any static
-file server — `python -m http.server`, `caddy file-server`, `npx http-server`,
+file server — `python -m http.server`, `caddy file-server`, `pnpm dlx http-server`,
 etc.
+
+Windsurf/VS Code workspace settings in `.vscode/settings.json` set the built-in
+NPM extension's package manager and script runner to `pnpm` for this repo.
 
 ---
 
@@ -45,16 +51,15 @@ etc.
 ### Option A — Railway CLI
 
 ```bash
-npm install -g @railway/cli
-railway login
+pnpm dlx @railway/cli login
 cd map-viewer
-railway init      # create a new project
-railway up        # deploy
-railway domain    # generate a public URL
+pnpm dlx @railway/cli init      # create a new project
+pnpm dlx @railway/cli up        # deploy
+pnpm dlx @railway/cli domain    # generate a public URL
 ```
 
-Railway will detect Node from `package.json`, run `npm install`, then start the
-app with `npx serve -s public -l $PORT` (see `railway.json` and `nixpacks.toml`).
+Railway uses `pnpm-lock.yaml`, runs `pnpm install --prod --frozen-lockfile`, then
+starts the app with `pnpm start` (see `railway.json` and `nixpacks.toml`).
 
 ### Option B — Railway dashboard
 
@@ -98,6 +103,21 @@ Edit `public/layers.json`. Each entry has:
 
 After editing, redeploy (or just push to GitHub if you're using the GitHub
 integration — Railway will rebuild).
+
+### Rebuilding built-in administrative boundaries
+
+State/county polygon assets live in `public/data/` and are generated from local
+shapefiles with GDAL/`ogr2ogr`:
+
+```bash
+pnpm build:admin-boundaries
+pnpm test
+```
+
+By default the script reads `/mnt/d/tl_2022_us_state/tl_2022_us_state.shp` and
+`/mnt/d/county_p010g.shp_nt00934/countyp010g.shp`. Override with
+`US_STATES_SHP=/path/to/states.shp` and `US_COUNTIES_SHP=/path/to/counties.shp`
+if needed.
 
 ---
 
@@ -143,10 +163,13 @@ map-viewer/
 │   ├── styles.css      UI (dark map-app aesthetic)
 │   ├── state.js        Single source of truth + event bus
 │   ├── layers.js       COG / GeoJSON loaders, opacity, time swapping
+│   ├── boundary-layers.js Built-in US state/county boundary toggles
 │   ├── timeslider.js   Time bar UI + playback engine
 │   ├── app.js          Bootstrap, sidebar, modal, base layers
-│   └── layers.json     Built-in layer catalog (edit me!)
-├── package.json        `serve` dependency, npm scripts
+│   ├── layers.json     Built-in layer catalog (edit me!)
+│   └── data/           Generated state/county GeoJSON + index
+├── scripts/            Boundary asset build/validation scripts
+├── package.json        `serve` dependency, pnpm scripts
 ├── railway.json        Railway start command
 ├── nixpacks.toml       Railway build config
 └── README.md           You are here
@@ -158,7 +181,7 @@ map-viewer/
 
 - No XYZ/WMTS layer support yet (per user choice — easy to add later, ~30 lines
   in `layers.js`).
-- No shapefile support — re-export to GeoJSON, or wire up `shpjs` if needed.
+- No direct shapefile upload support — re-export to GeoJSON, or wire up `shpjs` if needed.
 - Time slider syncs only the first visible time-aware layer. Multi-layer
   synchronization is a future addition.
 - No per-feature filtering / attribute table for vectors yet (click a feature

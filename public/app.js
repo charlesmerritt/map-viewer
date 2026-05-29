@@ -445,6 +445,7 @@
         panes.forEach((p) => {
           p.classList.toggle("hidden", p.dataset.pane !== which);
         });
+        setAddConfirmLabel(which);
       });
     });
 
@@ -471,6 +472,12 @@
     document.getElementById("titiler-scaler").value = "";
     document.getElementById("file-name").value = "";
     document.getElementById("file-input").value = "";
+    setAddConfirmLabel("titiler");
+  }
+
+  function setAddConfirmLabel(activeTab) {
+    document.getElementById("add-confirm").textContent =
+      activeTab === "builtin" ? "Done" : "Add layer";
   }
 
   async function onConfirmAdd(modal) {
@@ -604,6 +611,11 @@
     const root = document.getElementById("builtin-list");
     if (!root) return;
     root.innerHTML = "";
+
+    if (window.BoundaryLayers) {
+      await window.BoundaryLayers.render(root);
+    }
+
     let catalog;
     try {
       const res = await fetch("layers.json", { cache: "no-store" });
@@ -613,7 +625,9 @@
       console.warn("No layers.json catalog:", err);
       const hint = document.createElement("li");
       hint.className = "empty-hint";
-      hint.textContent = "No built-in layers configured.";
+      hint.textContent = window.BoundaryLayers
+        ? "No additional built-in layers configured."
+        : "No built-in layers configured.";
       root.appendChild(hint);
       return;
     }

@@ -3,15 +3,19 @@
   "version": "0.1.0",
   "description": "Lightweight web map viewer for PERSEUS forest modeling outputs. Supports COG rasters, GeoJSON vectors, and time-series layers.",
   "private": true,
+  "packageManager": "pnpm@11.2.2",
   "scripts": {
+    "preinstall": "node scripts/enforce-pnpm.mjs",
     "start": "serve -s public -l ${PORT:-3000}",
-    "dev": "serve -s public -l 3000"
+    "dev": "serve -s public -l 3000",
+    "build:admin-boundaries": "node scripts/build-admin-boundaries.mjs",
+    "test": "node scripts/validate-admin-boundaries.mjs"
   },
   "dependencies": {
-    "playwright": "^1.60.0",
     "serve": "^14.2.4"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=18",
+    "pnpm": ">=11"
   }
 }

@@ -1,11 +1,11 @@
 # Railway / Nixpacks build configuration.
-# The viewer is a pure static site; we just install `serve` and run it.
+# The viewer is a pure static site; install dependencies with pnpm and run `serve`.
 
 [phases.setup]
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["npm install --omit=dev || true", "npm install serve"]
+cmds = ["corepack enable", "pnpm install --prod --frozen-lockfile"]
 
 [start]
-cmd = "npx serve -s public -l $PORT"
+cmd = "pnpm start"

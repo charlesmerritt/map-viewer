@@ -4,23 +4,6 @@
 
   "layers": [
     {
-      "name": "Eastern US states (sample)",
-      "description": "PERSEUS study region — Eastern US state boundaries",
-      "type": "geojson",
-      "url": "https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json"
-    },
-
-    {
-      "name": "Sample COG — elevation",
-      "description": "Example Cloud-Optimized GeoTIFF (swap for biomass/cover later)",
-      "type": "cog",
-      "url": "https://s3.amazonaws.com/elevation-tiles-prod/geotiff/0/0/0.tif",
-      "style": {
-        "colormap": "viridis"
-      }
-    },
-
-    {
       "_comment": "Example of a time-series layer. Each timestep is one COG. The slider will appear automatically when this layer is visible.",
       "name": "Biomass projection (example time series)",
       "description": "Replace URLs with your per-year PERSEUS COGs",
