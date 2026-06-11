@@ -11,6 +11,10 @@
 
   const State = window.AppState;
   const Layers = window.Layers;
+  const GroupCore = window.LayerGroupsCore;
+
+  let lastSelectedLayerId = null;
+  let suppressNextLayerClick = false;
 
   // ---- Base layers ----
 
@@ -139,210 +143,631 @@
     const layers = State.getLayers().slice().reverse(); // top-most first
     empty.style.display = layers.length === 0 ? "block" : "none";
 
+    const renderedGroupIds = new Set();
     layers.forEach((layer) => {
-      const card = document.createElement("li");
-      card.className = "layer-card";
-      card.draggable = true;
-      card.dataset.layerId = layer.id;
-      card.addEventListener("dragstart", onLayerDragStart);
-      card.addEventListener("dragover", onLayerDragOver);
-      card.addEventListener("dragleave", onLayerDragLeave);
-      card.addEventListener("drop", onLayerDrop);
-      card.addEventListener("dragend", onLayerDragEnd);
+      const group = State.getGroupForLayer(layer.id);
+      if (!group) {
+        root.appendChild(renderLayerCard(layer));
+        return;
+      }
+      if (renderedGroupIds.has(group.id)) return;
+      renderedGroupIds.add(group.id);
+      const groupLayers = layers.filter((candidate) => group.layerIds.includes(candidate.id));
+      root.appendChild(renderLayerGroup(group, groupLayers));
+    });
 
-      const row = document.createElement("div");
-      row.className = "layer-row";
+    renderLayerToolbar();
+  }
 
-      const toggle = document.createElement("label");
-      toggle.className = "layer-toggle";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = !!layer.visible;
-      cb.addEventListener("change", () =>
-        Layers.setLayerVisible(layer, cb.checked)
-      );
-      toggle.appendChild(cb);
-      row.appendChild(toggle);
+  function renderLayerGroup(group, groupLayers) {
+    const item = document.createElement("li");
+    item.className = "layer-group";
+    item.dataset.groupId = group.id;
+    if (State.getActiveTimeGroup()?.id === group.id) item.classList.add("active-time-group");
 
-      const name = document.createElement("div");
-      name.className = "layer-name";
-      name.title = layer.name;
-      name.textContent = layer.name;
-      row.appendChild(name);
+    const header = document.createElement("div");
+    header.className = "layer-group-header";
+    header.addEventListener("click", (e) => {
+      if (isLayerInteractiveTarget(e.target)) return;
+      if (group.timeWidget) State.setActiveTimeGroup(group.id);
+    });
 
-      const meta = document.createElement("div");
-      meta.className = "layer-meta";
-      meta.textContent = (layer.type === "cog" || layer.type === "d2s-raster") ? "RASTER" : "VECTOR";
-      row.appendChild(meta);
+    const collapse = mkIconBtn(group.collapsed ? "▸" : "▾", "Collapse group", () => {
+      State.updateLayerGroup(group.id, { collapsed: !group.collapsed });
+    });
+    collapse.classList.add("layer-group-collapse");
+    header.appendChild(collapse);
 
-      const actions = document.createElement("div");
-      actions.className = "layer-actions";
-      const zoomBtn = mkIconBtn("⤢", "Zoom to layer", () => {
-        const bounds = layer.__bounds;
-        if (bounds && bounds.length === 4) {
-          State.getMap().fitBounds(bounds, { padding: 40 });
-        }
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "layer-group-title-wrap";
+
+    const title = document.createElement("div");
+    title.className = "layer-group-title";
+    title.textContent = group.name;
+    title.title = group.name;
+    titleWrap.appendChild(title);
+
+    const renameBtn = mkIconBtn("✎", "Rename group", () => renameLayerGroup(group));
+    renameBtn.classList.add("layer-group-rename");
+    titleWrap.appendChild(renameBtn);
+    header.appendChild(titleWrap);
+
+    const count = document.createElement("div");
+    count.className = "layer-group-count";
+    count.textContent = `${groupLayers.length} layers`;
+    header.appendChild(count);
+
+    item.appendChild(header);
+
+    const actions = document.createElement("div");
+    actions.className = "layer-group-actions";
+
+    const selectBtn = mkSmallBtn("Select", "Select group layers", () => {
+      State.setSelectedLayerIds(group.layerIds);
+      lastSelectedLayerId = group.layerIds[0] || null;
+    });
+    actions.appendChild(selectBtn);
+
+    const sliderBtn = mkSmallBtn(group.timeWidget ? "Slider on" : "Slider", "Toggle group time slider", () => {
+      const updated = State.updateLayerGroup(group.id, { timeWidget: !group.timeWidget });
+      if (updated?.timeWidget) {
+        State.setActiveTimeGroup(updated.id);
+        Layers.setGroupTimeIndex(updated, updated.timeIndex || 0);
+      } else {
+        State.reconcileActiveTimeLayer();
+      }
+    });
+    sliderBtn.classList.toggle("active", !!group.timeWidget);
+    actions.appendChild(sliderBtn);
+
+    if (group.timeWidget) {
+      const order = document.createElement("select");
+      order.className = "group-order-mode";
+      order.title = "Group playback order";
+      [
+        ["top-to-bottom", "Top → bottom"],
+        ["bottom-to-top", "Bottom → top"],
+        ["custom", "Custom"],
+      ].forEach(([value, label]) => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        order.appendChild(opt);
       });
-      actions.appendChild(zoomBtn);
-
-      const removeBtn = mkIconBtn("×", "Remove layer", () => {
-        Layers.removeLayer(layer);
+      order.value = group.orderMode || "top-to-bottom";
+      order.addEventListener("change", () => {
+        const updated = State.updateLayerGroup(group.id, {
+          orderMode: order.value,
+          timeIndex: 0,
+        });
+        State.setActiveTimeGroup(group.id);
+        if (updated?.timeWidget) Layers.setGroupTimeIndex(updated, 0);
       });
-      removeBtn.style.color = "#ef4444";
-      actions.appendChild(removeBtn);
-      row.appendChild(actions);
+      actions.appendChild(order);
+    }
 
-      card.appendChild(row);
+    const ungroupBtn = mkSmallBtn("Ungroup", "Ungroup these layers", () => {
+      State.removeLayerGroup(group.id);
+      State.toast(`Ungrouped ${group.name}`, "success");
+    });
+    actions.appendChild(ungroupBtn);
+    item.appendChild(actions);
 
-      // Opacity row
-      const opacityRow = document.createElement("div");
-      opacityRow.className = "layer-opacity";
-      const slider = document.createElement("input");
-      slider.type = "range";
-      slider.min = "0";
-      slider.max = "1";
-      slider.step = "0.05";
-      slider.value = String(layer.opacity ?? 1);
-      const val = document.createElement("span");
-      val.className = "opacity-val";
-      val.textContent = `${Math.round((layer.opacity ?? 1) * 100)}%`;
-      slider.addEventListener("input", (e) => {
-        const v = Number(e.target.value);
-        val.textContent = `${Math.round(v * 100)}%`;
-        Layers.setLayerOpacity(layer, v);
-      });
-      opacityRow.appendChild(slider);
-      opacityRow.appendChild(val);
-      card.appendChild(opacityRow);
+    const children = document.createElement("ul");
+    children.className = "group-layer-list";
+    children.classList.toggle("hidden", !!group.collapsed);
+    groupLayers.forEach((layer) => children.appendChild(renderLayerCard(layer, { group })));
+    item.appendChild(children);
 
-      // Colormap selector for d2s-raster layers
-      if (layer.type === "d2s-raster" && layer.cogUrl && layer.vizOptions) {
-        const cmRow = document.createElement("div");
-        cmRow.className = "layer-opacity";
-        cmRow.style.alignItems = "center";
-        const cmLabel = document.createElement("span");
-        cmLabel.className = "opacity-val";
-        cmLabel.style.minWidth = "auto";
-        cmLabel.style.marginRight = "6px";
-        cmLabel.textContent = "Colormap";
-        const cmSelect = document.createElement("select");
-        cmSelect.className = "layer-colormap-select";
-        const colormaps = [
-          { value: "", label: "Grayscale" },
-          { value: "viridis", label: "viridis" },
-          { value: "magma", label: "magma" },
-          { value: "inferno", label: "inferno" },
-          { value: "plasma", label: "plasma" },
-          { value: "cividis", label: "cividis" },
-          { value: "Greens", label: "Greens" },
-          { value: "YlGn", label: "YlGn" },
-          { value: "RdYlGn", label: "RdYlGn" },
-          { value: "Spectral", label: "Spectral" },
-          { value: "terrain", label: "terrain" },
-          { value: "turbo", label: "turbo" },
-          { value: "jet", label: "jet" },
-        ];
-        colormaps.forEach(c => {
-          const opt = document.createElement("option");
-          opt.value = c.value;
-          opt.textContent = c.label;
-          if (c.value === (layer.vizOptions.colormap_name || "")) opt.selected = true;
-          cmSelect.appendChild(opt);
-        });
-        cmSelect.addEventListener("change", () => {
-          Layers.setLayerColormap(layer, cmSelect.value || null);
-        });
-        cmRow.appendChild(cmLabel);
-        cmRow.appendChild(cmSelect);
-        card.appendChild(cmRow);
+    return item;
+  }
 
-        const scalerRow = document.createElement("div");
-        scalerRow.className = "layer-opacity";
-        scalerRow.style.alignItems = "center";
-        const scalerLabel = document.createElement("span");
-        scalerLabel.className = "opacity-val";
-        scalerLabel.style.minWidth = "auto";
-        scalerLabel.style.marginRight = "6px";
-        scalerLabel.textContent = "Scaler";
-        const scalerSelect = document.createElement("select");
-        scalerSelect.className = "layer-colormap-select";
-        const scalers = [
-          { value: "", label: "Default" },
-          { value: "nearest", label: "nearest" },
-          { value: "bilinear", label: "bilinear" },
-          { value: "cubic", label: "cubic" },
-          { value: "cubic_spline", label: "cubic spline" },
-          { value: "lanczos", label: "lanczos" },
-          { value: "average", label: "average" },
-          { value: "mode", label: "mode" },
-          { value: "max", label: "max" },
-          { value: "min", label: "min" },
-          { value: "med", label: "median" },
-          { value: "q1", label: "q1" },
-          { value: "q3", label: "q3" },
-        ];
-        scalers.forEach(s => {
-          const opt = document.createElement("option");
-          opt.value = s.value;
-          opt.textContent = s.label;
-          if (s.value === (layer.vizOptions.resampling || "")) opt.selected = true;
-          scalerSelect.appendChild(opt);
-        });
-        scalerSelect.addEventListener("change", () => {
-          Layers.setLayerResampling(layer, scalerSelect.value || null);
-        });
-        scalerRow.appendChild(scalerLabel);
-        scalerRow.appendChild(scalerSelect);
-        card.appendChild(scalerRow);
+  function renderLayerCard(layer, options = {}) {
+    const group = options.group || null;
+    const selected = State.getSelectedLayerIds().includes(layer.id);
+    const card = document.createElement("li");
+    card.className = "layer-card";
+    card.classList.toggle("selected", selected);
+    card.classList.toggle("layer-card-grouped", !!group);
+    card.dataset.layerId = layer.id;
+    card.setAttribute("aria-selected", String(selected));
+    card.addEventListener("click", onLayerCardClick);
+    card.addEventListener("dragover", onLayerDragOver);
+    card.addEventListener("dragleave", onLayerDragLeave);
+    card.addEventListener("drop", onLayerDrop);
 
-        const scale = parseRescale(layer.vizOptions.rescale);
-        if (scale) {
-          const ramp = document.createElement("div");
-          ramp.className = "layer-color-ramp";
-          const min = document.createElement("span");
-          min.className = "layer-ramp-value";
-          min.textContent = formatRampValue(scale.min);
-          const bar = document.createElement("div");
-          bar.className = `layer-ramp-bar ${rampClass(layer.vizOptions.colormap_name)}`;
-          const max = document.createElement("span");
-          max.className = "layer-ramp-value";
-          max.textContent = formatRampValue(scale.max);
-          ramp.appendChild(min);
-          ramp.appendChild(bar);
-          ramp.appendChild(max);
-          card.appendChild(ramp);
-        }
+    const row = document.createElement("div");
+    row.className = "layer-row";
+
+    const dragHandle = document.createElement("span");
+    dragHandle.className = "layer-drag-handle";
+    dragHandle.draggable = true;
+    dragHandle.textContent = "⋮⋮";
+    dragHandle.title = "Drag to reorder layer";
+    dragHandle.addEventListener("dragstart", onLayerDragStart);
+    dragHandle.addEventListener("dragend", onLayerDragEnd);
+    row.appendChild(dragHandle);
+
+    const toggle = document.createElement("label");
+    toggle.className = "layer-toggle";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !!layer.visible;
+    cb.addEventListener("change", () =>
+      Layers.setLayerVisible(layer, cb.checked)
+    );
+    toggle.appendChild(cb);
+    row.appendChild(toggle);
+
+    const name = document.createElement("div");
+    name.className = "layer-name";
+    name.title = layer.name;
+    name.textContent = layer.name;
+    row.appendChild(name);
+
+    const meta = document.createElement("div");
+    meta.className = "layer-meta";
+    meta.textContent = (layer.type === "cog" || layer.type === "d2s-raster") ? "RASTER" : "VECTOR";
+    row.appendChild(meta);
+
+    if (group && group.timeWidget && group.orderMode === "custom") {
+      row.appendChild(renderLayerOrderSelect(group, layer));
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "layer-actions";
+    const zoomBtn = mkIconBtn("⤢", "Zoom to layer", () => {
+      const bounds = layer.__bounds;
+      if (bounds && bounds.length === 4) {
+        State.getMap().fitBounds(bounds, { padding: 40 });
+      }
+    });
+    actions.appendChild(zoomBtn);
+
+    const removeBtn = mkIconBtn("×", "Remove layer", () => {
+      Layers.removeLayer(layer);
+    });
+    removeBtn.style.color = "#ef4444";
+    actions.appendChild(removeBtn);
+    row.appendChild(actions);
+
+    card.appendChild(row);
+
+    const opacityRow = document.createElement("div");
+    opacityRow.className = "layer-opacity";
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "1";
+    slider.step = "0.05";
+    slider.value = String(layer.opacity ?? 1);
+    const val = document.createElement("span");
+    val.className = "opacity-val";
+    val.textContent = `${Math.round((layer.opacity ?? 1) * 100)}%`;
+    slider.addEventListener("input", (e) => {
+      const v = Number(e.target.value);
+      val.textContent = `${Math.round(v * 100)}%`;
+      Layers.setLayerOpacity(layer, v);
+    });
+    opacityRow.appendChild(slider);
+    opacityRow.appendChild(val);
+    card.appendChild(opacityRow);
+
+    if (layer.type === "d2s-raster" && layer.cogUrl && layer.vizOptions) {
+      const styleContainer = group ? card : document.createElement("details");
+      if (!group) {
+        styleContainer.className = "layer-style-details";
+        const summary = document.createElement("summary");
+        summary.textContent = "Style options";
+        styleContainer.appendChild(summary);
       }
 
-      if (layer.loading) {
-        const loading = document.createElement("div");
-        loading.className = "layer-meta";
-        loading.textContent = "Loading…";
-        card.appendChild(loading);
-      } else if (layer.error) {
-        const err = document.createElement("div");
-        err.className = "layer-error";
-        err.textContent = layer.error;
-        card.appendChild(err);
-      } else if (layer.sourceDesc) {
-        const src = document.createElement("div");
-        src.className = "layer-meta";
-        src.style.textTransform = "none";
-        src.style.letterSpacing = "0";
-        src.textContent = layer.sourceDesc;
-        card.appendChild(src);
-      }
+      const cmRow = document.createElement("div");
+      cmRow.className = "layer-opacity";
+      cmRow.style.alignItems = "center";
+      const cmLabel = document.createElement("span");
+      cmLabel.className = "opacity-val";
+      cmLabel.style.minWidth = "auto";
+      cmLabel.style.marginRight = "6px";
+      cmLabel.textContent = "Colormap";
+      const cmSelect = document.createElement("select");
+      cmSelect.className = "layer-colormap-select";
+      const colormaps = [
+        { value: "", label: "Grayscale" },
+        { value: "viridis", label: "viridis" },
+        { value: "magma", label: "magma" },
+        { value: "inferno", label: "inferno" },
+        { value: "plasma", label: "plasma" },
+        { value: "cividis", label: "cividis" },
+        { value: "Greens", label: "Greens" },
+        { value: "YlGn", label: "YlGn" },
+        { value: "RdYlGn", label: "RdYlGn" },
+        { value: "Spectral", label: "Spectral" },
+        { value: "terrain", label: "terrain" },
+        { value: "turbo", label: "turbo" },
+        { value: "jet", label: "jet" },
+      ];
+      colormaps.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c.value;
+        opt.textContent = c.label;
+        if (c.value === (layer.vizOptions.colormap_name || "")) opt.selected = true;
+        cmSelect.appendChild(opt);
+      });
+      cmSelect.addEventListener("change", () => {
+        Layers.setLayerColormap(layer, cmSelect.value || null);
+      });
+      cmRow.appendChild(cmLabel);
+      cmRow.appendChild(cmSelect);
+      styleContainer.appendChild(cmRow);
 
-      root.appendChild(card);
+      const scalerRow = document.createElement("div");
+      scalerRow.className = "layer-opacity";
+      scalerRow.style.alignItems = "center";
+      const scalerLabel = document.createElement("span");
+      scalerLabel.className = "opacity-val";
+      scalerLabel.style.minWidth = "auto";
+      scalerLabel.style.marginRight = "6px";
+      scalerLabel.textContent = "Scaler";
+      const scalerSelect = document.createElement("select");
+      scalerSelect.className = "layer-colormap-select";
+      const scalers = [
+        { value: "", label: "Default" },
+        { value: "nearest", label: "nearest" },
+        { value: "bilinear", label: "bilinear" },
+        { value: "cubic", label: "cubic" },
+        { value: "cubic_spline", label: "cubic spline" },
+        { value: "lanczos", label: "lanczos" },
+        { value: "average", label: "average" },
+        { value: "mode", label: "mode" },
+        { value: "max", label: "max" },
+        { value: "min", label: "min" },
+        { value: "med", label: "median" },
+        { value: "q1", label: "q1" },
+        { value: "q3", label: "q3" },
+      ];
+      scalers.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.value;
+        opt.textContent = s.label;
+        if (s.value === (layer.vizOptions.resampling || "")) opt.selected = true;
+        scalerSelect.appendChild(opt);
+      });
+      scalerSelect.addEventListener("change", () => {
+        Layers.setLayerResampling(layer, scalerSelect.value || null);
+      });
+      scalerRow.appendChild(scalerLabel);
+      scalerRow.appendChild(scalerSelect);
+      styleContainer.appendChild(scalerRow);
+
+      const scale = parseRescale(layer.vizOptions.rescale);
+      if (scale) {
+        const ramp = document.createElement("div");
+        ramp.className = "layer-color-ramp";
+        const min = document.createElement("span");
+        min.className = "layer-ramp-value";
+        min.textContent = formatRampValue(scale.min);
+        const bar = document.createElement("div");
+        bar.className = `layer-ramp-bar ${rampClass(layer.vizOptions.colormap_name)}`;
+        const max = document.createElement("span");
+        max.className = "layer-ramp-value";
+        max.textContent = formatRampValue(scale.max);
+        ramp.appendChild(min);
+        ramp.appendChild(bar);
+        ramp.appendChild(max);
+        styleContainer.appendChild(ramp);
+      }
+      if (!group) card.appendChild(styleContainer);
+    }
+
+    if (layer.loading) {
+      const loading = document.createElement("div");
+      loading.className = "layer-meta";
+      loading.textContent = "Loading…";
+      card.appendChild(loading);
+    } else if (layer.error) {
+      const err = document.createElement("div");
+      err.className = "layer-error";
+      err.textContent = layer.error;
+      card.appendChild(err);
+    } else if (layer.sourceDesc) {
+      const src = document.createElement("div");
+      src.className = "layer-meta";
+      src.style.textTransform = "none";
+      src.style.letterSpacing = "0";
+      src.textContent = layer.sourceDesc;
+      card.appendChild(src);
+    }
+
+    return card;
+  }
+
+  function renderLayerOrderSelect(group, layer) {
+    const select = document.createElement("select");
+    select.className = "layer-order-select";
+    select.title = "Custom playback order (keys 1–0 also work)";
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "#";
+    select.appendChild(blank);
+    for (let i = 1; i <= 10; i += 1) {
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = `#${i}`;
+      select.appendChild(opt);
+    }
+    select.value = group.customOrder?.[layer.id] ? String(group.customOrder[layer.id]) : "";
+    select.addEventListener("change", () => {
+      setSingleLayerCustomOrder(group, layer.id, select.value);
+    });
+    return select;
+  }
+
+  function setSingleLayerCustomOrder(group, layerId, rawValue) {
+    const customOrder = { ...(group.customOrder || {}) };
+    const order = rawValue === "" ? null : Number(rawValue);
+    delete customOrder[layerId];
+    if (order !== null) {
+      Object.keys(customOrder).forEach((id) => {
+        if (customOrder[id] === order) delete customOrder[id];
+      });
+      customOrder[layerId] = order;
+    }
+    const updated = State.updateLayerGroup(group.id, { customOrder, orderMode: "custom" });
+    if (updated?.timeWidget) {
+      State.setActiveTimeGroup(updated.id);
+      Layers.setGroupTimeIndex(updated, updated.timeIndex || 0);
+    }
+  }
+
+  function renameLayerGroup(group) {
+    const name = window.prompt("Group name", group.name);
+    if (name === null) return;
+    State.updateLayerGroup(group.id, { name });
+  }
+
+  function renderLayerToolbar() {
+    const selected = State.getSelectedLayerIds();
+    const count = document.getElementById("layer-selection-count");
+    const groupBtn = document.getElementById("group-layer-btn");
+    const clearBtn = document.getElementById("clear-layer-selection-btn");
+    if (!count || !groupBtn || !clearBtn) return;
+    count.textContent = `${selected.length} selected`;
+    groupBtn.textContent = selectionCanUngroup(selected) ? "Ungroup" : "Group";
+    groupBtn.disabled = selected.length < 2;
+    clearBtn.disabled = selected.length === 0;
+  }
+
+  function selectionCanUngroup(selectedIds) {
+    if (selectedIds.length < 2) return false;
+    const groups = selectedIds.map((id) => State.getGroupForLayer(id)).filter(Boolean);
+    if (groups.length !== selectedIds.length) return false;
+    return groups.every((group) => group.id === groups[0].id);
+  }
+
+  function initLayerToolbar() {
+    document.getElementById("group-layer-btn")?.addEventListener("click", toggleGroupForSelected);
+    document.getElementById("select-all-layers-btn")?.addEventListener("click", () => {
+      State.setSelectedLayerIds(getVisibleLayerIds());
+    });
+    document.getElementById("clear-layer-selection-btn")?.addEventListener("click", () => {
+      State.clearSelectedLayers();
+      lastSelectedLayerId = null;
+    });
+    initKeyboardHelp();
+    document.getElementById("layer-list")?.addEventListener("pointerdown", onLayerListPointerDown);
+    document.addEventListener("keydown", onLayerKeyboardShortcut);
+  }
+
+  function initKeyboardHelp() {
+    const help = document.getElementById("keyboard-help");
+    const button = document.getElementById("keyboard-help-btn");
+    const panel = help?.querySelector(".keyboard-help-panel");
+    if (!help || !button || !panel) return;
+
+    const positionPanel = () => positionKeyboardHelpPanel(button, panel);
+    ["mouseenter", "focus"].forEach((eventName) => {
+      button.addEventListener(eventName, positionPanel);
+    });
+    help.addEventListener("mouseenter", positionPanel);
+    window.addEventListener("resize", positionPanel);
+
+    button.addEventListener("click", (e) => {
+      e.stopPropagation();
+      positionPanel();
+      const open = !help.classList.contains("open");
+      help.classList.toggle("open", open);
+      button.setAttribute("aria-expanded", String(open));
+    });
+
+    document.addEventListener("click", (e) => {
+      if (help.contains(e.target)) return;
+      help.classList.remove("open");
+      button.setAttribute("aria-expanded", "false");
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      help.classList.remove("open");
+      button.setAttribute("aria-expanded", "false");
     });
   }
 
-  function onLayerDragStart(e) {
-    if (e.target.closest("input, select, button, label")) {
+  function positionKeyboardHelpPanel(button, panel) {
+    const buttonRect = button.getBoundingClientRect();
+    const panelWidth = panel.offsetWidth || 270;
+    const gap = 8;
+    const left = Math.min(
+      buttonRect.right + gap,
+      window.innerWidth - panelWidth - gap
+    );
+    const top = buttonRect.top + buttonRect.height / 2;
+    panel.style.left = `${Math.max(gap, left)}px`;
+    panel.style.top = `${top}px`;
+  }
+
+  function toggleGroupForSelected() {
+    const selected = State.getSelectedLayerIds();
+    if (selected.length < 2) {
+      State.toast("Select at least two layers to group", "error");
+      return;
+    }
+
+    const selectedGroups = selected.map((id) => State.getGroupForLayer(id)).filter(Boolean);
+    if (selectedGroups.length === selected.length && selectedGroups.every((group) => group.id === selectedGroups[0].id)) {
+      const group = selectedGroups[0];
+      if (selected.length === group.layerIds.length) {
+        State.removeLayerGroup(group.id);
+        State.toast(`Ungrouped ${group.name}`, "success");
+        return;
+      }
+      State.ungroupLayerIds(selected);
+      State.toast("Removed selected layers from group", "success");
+      return;
+    }
+
+    const name = window.prompt("Group name", `Group ${State.getLayerGroups().length + 1}`);
+    if (name === null) return;
+    const group = State.createLayerGroup({ name, layerIds: selected, timeWidget: true });
+    if (!group) {
+      State.toast("Could not group selected layers", "error");
+      return;
+    }
+    State.setActiveTimeGroup(group.id);
+    Layers.setGroupTimeIndex(group, group.timeIndex || 0);
+    State.toast(`Grouped ${group.layerIds.length} layers`, "success");
+  }
+
+  function onLayerCardClick(e) {
+    if (suppressNextLayerClick) {
       e.preventDefault();
       return;
     }
+    if (isLayerInteractiveTarget(e.target)) return;
     const card = e.currentTarget;
+    const layerId = card.dataset.layerId;
+    if (!layerId) return;
+
+    if (e.shiftKey && lastSelectedLayerId) {
+      selectLayerRange(lastSelectedLayerId, layerId);
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      State.toggleLayerSelected(layerId);
+      lastSelectedLayerId = layerId;
+      return;
+    }
+    State.setSelectedLayerIds([layerId]);
+    lastSelectedLayerId = layerId;
+  }
+
+  function onLayerListPointerDown(e) {
+    if (e.button !== 0 || isLayerInteractiveTarget(e.target)) return;
+    const startCard = e.target.closest(".layer-card");
+    if (!startCard) return;
+    const start = {
+      x: e.clientX,
+      y: e.clientY,
+      layerId: startCard.dataset.layerId,
+      selecting: false,
+    };
+
+    const onMove = (moveEvent) => {
+      const dx = moveEvent.clientX - start.x;
+      const dy = moveEvent.clientY - start.y;
+      if (!start.selecting && Math.hypot(dx, dy) < 6) return;
+      start.selecting = true;
+      const hoverCard = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest(".layer-card");
+      if (!hoverCard || !document.getElementById("layer-list").contains(hoverCard)) return;
+      selectLayerRange(start.layerId, hoverCard.dataset.layerId);
+      moveEvent.preventDefault();
+    };
+
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      if (!start.selecting) return;
+      suppressNextLayerClick = true;
+      window.setTimeout(() => {
+        suppressNextLayerClick = false;
+      }, 0);
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp, { once: true });
+  }
+
+  function selectLayerRange(anchorId, targetId) {
+    const ids = getVisibleLayerIds();
+    const from = ids.indexOf(anchorId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    const [start, end] = from < to ? [from, to] : [to, from];
+    State.setSelectedLayerIds(ids.slice(start, end + 1));
+    lastSelectedLayerId = anchorId;
+  }
+
+  function getVisibleLayerIds() {
+    return Array.from(document.querySelectorAll("#layer-list .layer-card[data-layer-id]"))
+      .filter((card) => card.offsetParent !== null)
+      .map((card) => card.dataset.layerId);
+  }
+
+  function onLayerKeyboardShortcut(e) {
+    if (isTextEntryTarget(e.target)) return;
+    if (e.key.toLowerCase() === "g") {
+      e.preventDefault();
+      toggleGroupForSelected();
+      return;
+    }
+    const order = GroupCore.numberKeyToOrder(e.key);
+    if (order !== null) {
+      assignSelectedCustomOrder(order);
+    }
+  }
+
+  function assignSelectedCustomOrder(firstOrder) {
+    const selected = State.getSelectedLayerIds();
+    if (selected.length === 0) return;
+    const group = getSelectedWidgetGroup(selected);
+    if (!group) return;
+    const orderedSelected = getVisibleLayerIds().filter(
+      (id) => selected.includes(id) && group.layerIds.includes(id)
+    );
+    if (firstOrder + orderedSelected.length - 1 > 10) {
+      State.toast("Selected layers exceed custom order 10", "error");
+      return;
+    }
+    const updated = State.assignLayerGroupOrder(group.id, orderedSelected, firstOrder);
+    if (!updated) return;
+    State.setActiveTimeGroup(group.id);
+    Layers.setGroupTimeIndex(updated, updated.timeIndex || 0);
+    State.toast(`Assigned order starting at ${firstOrder}`, "success");
+  }
+
+  function getSelectedWidgetGroup(selectedIds) {
+    const groups = selectedIds.map((id) => State.getGroupForLayer(id)).filter(Boolean);
+    if (groups.length !== selectedIds.length) return null;
+    const group = groups[0];
+    if (!group || !group.timeWidget) return null;
+    return groups.every((item) => item.id === group.id) ? group : null;
+  }
+
+  function isLayerInteractiveTarget(target) {
+    return !!target.closest("input, select, button, label, a, summary, details, .layer-drag-handle");
+  }
+
+  function isTextEntryTarget(target) {
+    const tag = target?.tagName?.toLowerCase();
+    return tag === "input" || tag === "select" || tag === "textarea" || target?.isContentEditable;
+  }
+
+  function onLayerDragStart(e) {
+    const card = e.currentTarget.closest(".layer-card");
+    if (!card) {
+      e.preventDefault();
+      return;
+    }
     card.classList.add("dragging");
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", card.dataset.layerId);
@@ -386,6 +811,16 @@
   function mkIconBtn(text, title, onClick) {
     const b = document.createElement("button");
     b.className = "icon-btn";
+    b.textContent = text;
+    b.title = title;
+    b.setAttribute("aria-label", title);
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  function mkSmallBtn(text, title, onClick) {
+    const b = document.createElement("button");
+    b.className = "btn-ghost layer-tool-btn";
     b.textContent = text;
     b.title = title;
     b.setAttribute("aria-label", title);
@@ -690,7 +1125,11 @@
     }
   }
 
-  // ---- Sidebar collapse ----
+  // ---- Sidebar collapse / resize ----
+
+  const SIDEBAR_WIDTH_KEY = "perseus.sidebarWidth";
+  const SIDEBAR_MIN_WIDTH = 320;
+  const SIDEBAR_MAX_WIDTH = 620;
 
   function initSidebarToggle() {
     const sidebar = document.getElementById("sidebar");
@@ -706,6 +1145,56 @@
       openBtn.classList.add("hidden");
       setTimeout(() => State.getMap().resize(), 220);
     });
+  }
+
+  function initSidebarResizer() {
+    const sidebar = document.getElementById("sidebar");
+    const resizer = document.getElementById("sidebar-resizer");
+    if (!sidebar || !resizer) return;
+
+    const savedWidth = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+    if (window.innerWidth > 720 && Number.isFinite(savedWidth)) setSidebarWidth(savedWidth);
+
+    resizer.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      if (window.innerWidth <= 720) return;
+      sidebar.classList.add("resizing");
+      resizer.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+
+    resizer.addEventListener("pointermove", (e) => {
+      if (!sidebar.classList.contains("resizing")) return;
+      setSidebarWidth(e.clientX);
+      State.getMap()?.resize();
+    });
+
+    resizer.addEventListener("pointerup", (e) => {
+      if (!sidebar.classList.contains("resizing")) return;
+      sidebar.classList.remove("resizing");
+      resizer.releasePointerCapture(e.pointerId);
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(currentSidebarWidth()));
+      State.getMap()?.resize();
+    });
+
+    resizer.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const delta = e.key === "ArrowRight" ? 24 : -24;
+      setSidebarWidth(currentSidebarWidth() + delta);
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(currentSidebarWidth()));
+      State.getMap()?.resize();
+    });
+  }
+
+  function setSidebarWidth(width) {
+    const next = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, width));
+    document.documentElement.style.setProperty("--sidebar-w", `${Math.round(next)}px`);
+  }
+
+  function currentSidebarWidth() {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue("--sidebar-w");
+    return Number.parseFloat(raw) || SIDEBAR_MIN_WIDTH;
   }
 
   // ---- Toast ----
@@ -729,10 +1218,16 @@
     renderBasemapSelect();
     initAddModal();
     initSidebarToggle();
+    initSidebarResizer();
     initToast();
+    initLayerToolbar();
+    if (window.ZonalStats) window.ZonalStats.init();
 
     State.on("layers:changed", renderLayerList);
     State.on("layer:updated", renderLayerList);
+    State.on("groups:changed", renderLayerList);
+    State.on("selection:changed", renderLayerList);
+    State.on("time:active-changed", renderLayerList);
     renderLayerList();
 
     if (window.TimeSlider) window.TimeSlider.init();

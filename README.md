@@ -16,12 +16,16 @@ database. The Railway deployment is just a static file server.
   picking from the built-in catalog (`public/layers.json`).
 - **Built-in boundaries** — toggle simplified US state and county polygons, including
   all states, all counties, all counties in a state, and individual states/counties.
+- **Zonal raster tools scaffold** — click a visible built-in state/county polygon and
+  open a Chart.js-backed modal for future raster summaries/clipping.
 - **Per-layer controls** — visibility toggle, opacity slider, zoom-to-extent, remove.
+- **Layer groups** — multi-select layers, group/ungroup with a toolbar button or `G`,
+  collapse groups, and scrub group members with the shared play/scrub time bar.
 - **Raster styling** — choose a colormap (viridis, magma, Greens, RdYlGn, …) and
   optionally pin min/max for the color stretch.
 - **Time slider** — appears automatically when a visible layer declares a `times`
-  array. Play / pause / loop, four speeds, drag to scrub. Each timestep is loaded
-  lazily and cached.
+  array or when a layer group has its slider enabled. Play / pause / loop, four
+  speeds, drag to scrub. Each native timestep is loaded lazily and cached.
 
 ---
 
@@ -154,6 +158,19 @@ GeoJSON has the same CORS requirement, minus the range-request piece.
 
 ---
 
+## Zonal statistics and clipping scaffold
+
+1. Toggle built-in state/county polygons from **Add layer → Built-in**.
+2. Click one visible polygon on the map.
+3. Use the **Zonal tools** sidebar section to open the summarize/clip modal.
+
+The current implementation intentionally stubs zonal-statistics and clip-to-extent
+processing. It keeps the UX shell, selected-polygon flow, raster-layer picker, and
+Chart.js wiring so a future processing backend can be connected cleanly. Grafana-style
+dashboards remain a future integration target.
+
+---
+
 ## File layout
 
 ```
@@ -162,8 +179,10 @@ map-viewer/
 │   ├── index.html      Layout + CDN scripts
 │   ├── styles.css      UI (dark map-app aesthetic)
 │   ├── state.js        Single source of truth + event bus
+│   ├── layer-groups-core.js Pure layer-group ordering helpers
 │   ├── layers.js       COG / GeoJSON loaders, opacity, time swapping
 │   ├── boundary-layers.js Built-in US state/county boundary toggles
+│   ├── zonal-stats.js  Stubbed zonal tools modal + Chart.js wiring
 │   ├── timeslider.js   Time bar UI + playback engine
 │   ├── app.js          Bootstrap, sidebar, modal, base layers
 │   ├── layers.json     Built-in layer catalog (edit me!)

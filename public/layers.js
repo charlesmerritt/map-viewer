@@ -640,8 +640,8 @@
     const visibility = visible ? "visible" : "none";
     map.setLayoutProperty(layer.layerId, "visibility", visibility);
     if (layer.type === "geojson") {
-      map.setLayoutProperty(layer.layerId + "_line", visibility);
-      map.setLayoutProperty(layer.layerId + "_circle", visibility);
+      map.setLayoutProperty(layer.layerId + "_line", "visibility", visibility);
+      map.setLayoutProperty(layer.layerId + "_circle", "visibility", visibility);
     }
     State.updateLayer(layer.id, { visible });
     State.reconcileActiveTimeLayer();
@@ -712,6 +712,18 @@
 
     layer.timeIndex = idx;
     State.updateLayer(layer.id, {});
+  }
+
+  function setGroupTimeIndex(group, idx) {
+    if (!group || !group.timeWidget) return;
+    const steps = State.getGroupTimeSteps(group.id);
+    if (steps.length < 2) return;
+    const index = Math.max(0, Math.min(steps.length - 1, Number(idx) || 0));
+    steps.forEach(({ layer }, stepIndex) => {
+      const visible = stepIndex === index;
+      if (layer.visible !== visible) setLayerVisible(layer, visible);
+    });
+    State.updateLayerGroup(group.id, { timeIndex: index });
   }
 
   function removeLayer(layer) {
@@ -914,6 +926,7 @@
     setLayerResampling,
     reorderLayersFromTopIds,
     setLayerTimeIndex,
+    setGroupTimeIndex,
     removeLayer,
   };
 })();

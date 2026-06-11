@@ -21,6 +21,9 @@
     statesLine: "admin-boundaries-states-line",
     countiesFill: "admin-boundaries-counties-fill",
     countiesLine: "admin-boundaries-counties-line",
+    selectionSource: "admin-boundaries-selection-source",
+    selectionFill: "admin-boundaries-selection-fill",
+    selectionLine: "admin-boundaries-selection-line",
   };
 
   let indexPromise = null;
@@ -28,6 +31,9 @@
   let statesDataPromise = null;
   let countiesDataPromise = null;
   let selectedStateFp = null;
+  let selectedBoundary = null;
+  let stateClickHandlerAttached = false;
+  let countyClickHandlerAttached = false;
 
   const selectedStateFips = new Set();
   const selectedCountyGeoids = new Set();
@@ -312,6 +318,7 @@
         },
       });
     }
+    attachStateClickHandler(map);
   }
 
   async function ensureCountyLayers(map) {
@@ -347,6 +354,7 @@
         },
       });
     }
+    attachCountyClickHandler(map);
   }
 
   function updateLayerVisibilityAndFilters(map, config) {
@@ -378,6 +386,8 @@
       IDS.countiesLine,
       IDS.statesFill,
       IDS.statesLine,
+      IDS.selectionFill,
+      IDS.selectionLine,
     ].forEach((id) => {
       if (map.getLayer(id)) map.moveLayer(id);
     });
@@ -388,7 +398,126 @@
     }
   }
 
+  function attachStateClickHandler(map) {
+    if (stateClickHandlerAttached) return;
+    map.on("click", IDS.statesFill, async (event) => {
+      if (map.getLayer(IDS.countiesFill)) {
+        const countyFeatures = map.queryRenderedFeatures(event.point, {
+          layers: [IDS.countiesFill],
+        });
+        if (countyFeatures.length > 0) return;
+      }
+      const feature = event.features && event.features[0];
+      if (!feature) return;
+      const statefp = String(feature.properties?.statefp || feature.properties?.STATEFP || "");
+      const data = await loadStatesData();
+      const fullFeature = data.features.find((item) => item.properties.statefp === statefp);
+      if (fullFeature) selectBoundary("state", fullFeature);
+    });
+    map.on("mouseenter", IDS.statesFill, () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", IDS.statesFill, () => {
+      map.getCanvas().style.cursor = "";
+    });
+    stateClickHandlerAttached = true;
+  }
+
+  function attachCountyClickHandler(map) {
+    if (countyClickHandlerAttached) return;
+    map.on("click", IDS.countiesFill, async (event) => {
+      const feature = event.features && event.features[0];
+      if (!feature) return;
+      const geoid = String(feature.properties?.geoid || feature.properties?.GEOID || "");
+      const data = await loadCountiesData();
+      const fullFeature = data.features.find((item) => item.properties.geoid === geoid);
+      if (fullFeature) selectBoundary("county", fullFeature);
+    });
+    map.on("mouseenter", IDS.countiesFill, () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", IDS.countiesFill, () => {
+      map.getCanvas().style.cursor = "";
+    });
+    countyClickHandlerAttached = true;
+  }
+
+  function selectBoundary(kind, feature) {
+    const map = State.getMap();
+    const properties = feature.properties || {};
+    selectedBoundary = {
+      kind,
+      id: kind === "county" ? properties.geoid : properties.statefp,
+      name: properties.name,
+      statefp: properties.statefp,
+      stusps: properties.stusps,
+      geoid: properties.geoid || null,
+      geometry: feature.geometry,
+      bbox: bboxOfGeometry(feature.geometry),
+    };
+    if (map) showSelectedBoundary(map, feature);
+    State.emit("boundary:selected", selectedBoundary);
+    State.toast(`Selected ${selectedBoundary.name}`, "success");
+  }
+
+  function showSelectedBoundary(map, feature) {
+    if (!map.getSource(IDS.selectionSource)) {
+      map.addSource(IDS.selectionSource, {
+        type: "geojson",
+        data: feature,
+      });
+    } else {
+      map.getSource(IDS.selectionSource).setData(feature);
+    }
+
+    if (!map.getLayer(IDS.selectionFill)) {
+      map.addLayer({
+        id: IDS.selectionFill,
+        type: "fill",
+        source: IDS.selectionSource,
+        paint: {
+          "fill-color": "#38bdf8",
+          "fill-opacity": 0.18,
+        },
+      });
+    }
+    if (!map.getLayer(IDS.selectionLine)) {
+      map.addLayer({
+        id: IDS.selectionLine,
+        type: "line",
+        source: IDS.selectionSource,
+        paint: {
+          "line-color": "#e0f2fe",
+          "line-width": 3,
+          "line-opacity": 1,
+        },
+      });
+    }
+    orderBoundaryLayers(map);
+  }
+
+  function bboxOfGeometry(geometry) {
+    const bbox = [Infinity, Infinity, -Infinity, -Infinity];
+    walkCoordinates(geometry.coordinates, (point) => {
+      bbox[0] = Math.min(bbox[0], point[0]);
+      bbox[1] = Math.min(bbox[1], point[1]);
+      bbox[2] = Math.max(bbox[2], point[0]);
+      bbox[3] = Math.max(bbox[3], point[1]);
+    });
+    return bbox.every(Number.isFinite) ? bbox : null;
+  }
+
+  function walkCoordinates(coordinates, visit) {
+    if (!Array.isArray(coordinates)) return;
+    if (typeof coordinates[0] === "number") {
+      visit(coordinates);
+      return;
+    }
+    coordinates.forEach((child) => walkCoordinates(child, visit));
+  }
+
   window.BoundaryLayers = {
     render,
+    getSelectedBoundary: () => selectedBoundary,
   };
 })();

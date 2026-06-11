@@ -55,8 +55,8 @@
   }
 
   function refresh() {
-    const layer = State.getActiveTimeLayer();
-    if (!layer || !layer.times || layer.times.length < 2) {
+    const source = State.getActiveTimeSource();
+    if (!source || !source.times || source.times.length < 2) {
       el.bar.classList.add("hidden");
       pause();
       return;
@@ -64,29 +64,29 @@
     el.bar.classList.remove("hidden");
 
     el.slider.min = "0";
-    el.slider.max = String(layer.times.length - 1);
+    el.slider.max = String(source.times.length - 1);
     el.slider.step = "1";
 
-    const idx = layer.timeIndex ?? 0;
+    const idx = source.index ?? 0;
     if (Number(el.slider.value) !== idx) {
       advancingProgrammatically = true;
       el.slider.value = String(idx);
       advancingProgrammatically = false;
     }
 
-    el.min.textContent = layer.times[0].label;
-    el.max.textContent = layer.times[layer.times.length - 1].label;
-    el.cur.textContent = layer.times[idx].label;
-    el.source.textContent = layer.name + (layer.timeLoading ? " — loading…" : "");
+    el.min.textContent = source.times[0].label;
+    el.max.textContent = source.times[source.times.length - 1].label;
+    el.cur.textContent = source.times[idx]?.label || "";
+    el.source.textContent = source.name + (source.loading ? " — loading…" : "");
   }
 
   async function onSliderInput(e) {
     if (advancingProgrammatically) return;
-    const layer = State.getActiveTimeLayer();
-    if (!layer) return;
+    const source = State.getActiveTimeSource();
+    if (!source) return;
     const idx = Number(e.target.value);
-    el.cur.textContent = layer.times[idx]?.label || "";
-    await Layers.setLayerTimeIndex(layer, idx);
+    el.cur.textContent = source.times[idx]?.label || "";
+    await setTimeSourceIndex(source, idx);
   }
 
   function togglePlay() {
@@ -95,8 +95,8 @@
   }
 
   function play() {
-    const layer = State.getActiveTimeLayer();
-    if (!layer || !layer.times || layer.times.length < 2) return;
+    const source = State.getActiveTimeSource();
+    if (!source || !source.times || source.times.length < 2) return;
 
     playing = true;
     el.play.innerHTML = "&#10073;&#10073;"; // pause glyph
@@ -107,13 +107,13 @@
     if (intervalId) clearInterval(intervalId);
 
     intervalId = setInterval(async () => {
-      const lyr = State.getActiveTimeLayer();
-      if (!lyr || !lyr.times) {
+      const current = State.getActiveTimeSource();
+      if (!current || !current.times) {
         pause();
         return;
       }
-      let next = (lyr.timeIndex ?? 0) + 1;
-      if (next >= lyr.times.length) {
+      let next = (current.index ?? 0) + 1;
+      if (next >= current.times.length) {
         if (el.loop.checked) {
           next = 0;
         } else {
@@ -121,9 +121,16 @@
           return;
         }
       }
-      await Layers.setLayerTimeIndex(lyr, next);
+      await setTimeSourceIndex(current, next);
       refresh();
     }, intervalMs);
+  }
+
+  async function setTimeSourceIndex(source, idx) {
+    if (source.kind === "group") {
+      return Layers.setGroupTimeIndex(State.getLayerGroup(source.id), idx);
+    }
+    return Layers.setLayerTimeIndex(source.layer || State.getLayer(source.id), idx);
   }
 
   function pause() {

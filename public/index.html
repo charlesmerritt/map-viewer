@@ -8,6 +8,7 @@
       name="description"
       content="Lightweight viewer for PERSEUS forest modeling outputs. COG rasters, GeoJSON vectors, time-series playback."
     />
+    <link rel="icon" type="image/png" href="perseus-logo.png" />
 
     <!-- MapLibre GL JS -->
     <script src="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.js"></script>
@@ -25,6 +26,9 @@
     <!-- chroma.js — colormaps for raster styling -->
     <script src="https://unpkg.com/chroma-js@2.4.2/chroma.min.js"></script>
 
+    <!-- Chart.js — simple client-side figures for tabular summaries -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -34,7 +38,7 @@
       <aside id="sidebar" aria-label="Layer panel">
         <header class="sidebar-header">
           <div class="brand">
-            <span class="brand-mark">P</span>
+            <img class="brand-mark" src="perseus-logo.png" alt="PERSEUS logo" />
             <div>
               <div class="brand-title">PERSEUS</div>
               <div class="brand-sub">Map Viewer</div>
@@ -56,10 +60,46 @@
             <h2 class="panel-title">Layers</h2>
             <button id="add-layer-btn" class="btn-primary">+ Add layer</button>
           </div>
+          <div id="layer-toolbar" class="layer-toolbar" aria-label="Layer tools">
+            <button id="group-layer-btn" class="btn-ghost" title="Group / ungroup selected layers (G)">Group</button>
+            <button id="select-all-layers-btn" class="btn-ghost" title="Select all visible layers">Select all</button>
+            <button id="clear-layer-selection-btn" class="btn-ghost" title="Clear layer selection">Clear</button>
+            <div id="keyboard-help" class="keyboard-help">
+              <button id="keyboard-help-btn" class="icon-btn keyboard-help-btn" type="button" aria-label="Layer keyboard shortcuts" aria-expanded="false">?</button>
+              <div class="keyboard-help-panel" role="tooltip">
+                <strong>Layer shortcuts</strong>
+                <ul>
+                  <li><kbd>Click</kbd> selects one layer.</li>
+                  <li><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + click toggles layers.</li>
+                  <li><kbd>Shift</kbd> + click or drag selects a range.</li>
+                  <li><kbd>G</kbd> groups or ungroups selected layers.</li>
+                  <li><kbd>1</kbd>–<kbd>0</kbd> assigns custom order in slider groups.</li>
+                  <li>Drag <span class="inline-handle">⋮⋮</span> to reorder.</li>
+                </ul>
+              </div>
+            </div>
+            <span id="layer-selection-count" class="layer-selection-count">0 selected</span>
+          </div>
           <ul id="layer-list" class="layer-list" aria-live="polite"></ul>
           <p id="layer-empty" class="empty-hint">
             No layers yet. Paste a URL, add a TiTiler COG, or upload a file.
           </p>
+        </section>
+
+        <section class="panel hidden" id="zonal-panel">
+          <h2 class="panel-title">Zonal tools</h2>
+          <p id="zonal-empty" class="empty-hint">
+            Toggle built-in state/county polygons, then click one on the map.
+          </p>
+          <div id="zonal-selection" class="hidden">
+            <div class="zonal-selected-label">Selected polygon</div>
+            <div id="zonal-selected-name" class="zonal-selected-name"></div>
+            <div id="zonal-selected-meta" class="layer-meta"></div>
+            <div class="zonal-actions">
+              <button id="zonal-open-stats" class="btn-primary">Summarize raster</button>
+              <button id="zonal-open-clip" class="btn-ghost">Clip layer to extent</button>
+            </div>
+          </div>
         </section>
 
         <footer class="sidebar-footer">
@@ -73,6 +113,7 @@
             >Source</a
           >
         </footer>
+        <div id="sidebar-resizer" class="sidebar-resizer" role="separator" aria-label="Resize layer panel" aria-orientation="vertical" tabindex="0"></div>
       </aside>
 
       <main id="map-region">
@@ -231,11 +272,54 @@
       </div>
     </div>
 
+    <!-- Zonal stats modal -->
+    <div id="zonal-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="zonal-modal-title">
+      <div class="modal-card zonal-modal-card">
+        <div class="modal-head">
+          <h3 id="zonal-modal-title">Zonal raster tools</h3>
+          <button class="icon-btn" data-close-zonal-modal aria-label="Close">&times;</button>
+        </div>
+
+        <div id="zonal-modal-zone" class="zonal-modal-zone"></div>
+
+        <label class="field">
+          <span>Raster layer</span>
+          <select id="zonal-layer-select"></select>
+        </label>
+
+        <p id="zonal-modal-hint" class="hint"></p>
+
+        <div class="modal-actions zonal-run-actions">
+          <button class="btn-primary" id="zonal-run-action">Run</button>
+        </div>
+
+        <div id="zonal-status" class="hint"></div>
+        <div id="zonal-results" class="zonal-results hidden">
+          <div class="zonal-table-wrap">
+            <table class="zonal-table">
+              <thead>
+                <tr>
+                  <th>Statistic</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody id="zonal-results-body"></tbody>
+            </table>
+          </div>
+          <div class="zonal-chart-wrap">
+            <canvas id="zonal-chart" aria-label="Zonal statistics chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
+    <script src="layer-groups-core.js"></script>
     <script src="state.js"></script>
     <script src="layers.js"></script>
     <script src="boundary-layers.js"></script>
+    <script src="zonal-stats.js"></script>
     <script src="timeslider.js"></script>
     <script src="app.js"></script>
   </body>
