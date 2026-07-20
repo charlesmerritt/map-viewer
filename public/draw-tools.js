@@ -12,6 +12,7 @@
      isActive()      — true while a polygon is being drawn
      startDrawing()
      clearAll()
+     raiseLayers()  — re-stack the drawn layers above the rasters
    ---------------------------------------------------------------- */
 
 (function () {
@@ -271,6 +272,24 @@
     }
   }
 
+  // The draw layers are added on top once, but adding or reordering a
+  // raster afterwards moves it above them — and an opaque raster hides
+  // a 0.15-opacity fill completely. layers.js calls this whenever it
+  // restacks, mirroring how it keeps the basemap pinned at the bottom.
+  function raiseLayers() {
+    const map = State.getMap();
+    if (!map) return;
+    [
+      IDS.drawnFill,
+      IDS.drawnLine,
+      IDS.drawnSelectedLine,
+      IDS.activeLine,
+      IDS.activeVertices,
+    ].forEach((id) => {
+      if (map.getLayer(id)) map.moveLayer(id);
+    });
+  }
+
   function onDrawnPolygonClick(event) {
     if (active) return;
     const clicked = event.features && event.features[0];
@@ -320,5 +339,5 @@
     return bbox.every(Number.isFinite) ? bbox : null;
   }
 
-  window.DrawTools = { init, isActive, startDrawing, clearAll };
+  window.DrawTools = { init, isActive, startDrawing, clearAll, raiseLayers };
 })();

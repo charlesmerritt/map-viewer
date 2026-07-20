@@ -151,4 +151,38 @@ const triStats = Zonal.computeGridStats(makeGrid(), [
 ]);
 assert.equal(triStats.count, 45, "triangle covers pixels whose centers fall inside");
 
+// ---- planReadWindow: the pixel budget holds with or without overviews ----
+
+// 1000x1000 image over [0, 0, 1000, 1000]; polygon covers a 100x100 window.
+const smallPlan = Zonal.planReadWindow([0, 0, 1000, 1000], [10, 10, 110, 110], 1000, 1000, 4000);
+assert.deepEqual(
+  [smallPlan.x0, smallPlan.x1, smallPlan.y0, smallPlan.y1],
+  [10, 110, 890, 990],
+  "window is derived from the intersection box, y counted from the top"
+);
+assert.equal(smallPlan.pixels, 10000, "window pixel count is width * height");
+assert.equal(smallPlan.downsampled, true, "10000 pixels exceeds the 4000 budget");
+assert.ok(
+  smallPlan.outWidth * smallPlan.outHeight <= 4000,
+  "decimated read stays inside the budget"
+);
+assert.equal(smallPlan.outResX, (100 * 1) / smallPlan.outWidth, "resolution scales with the read size");
+
+const underBudget = Zonal.planReadWindow([0, 0, 1000, 1000], [10, 10, 110, 110], 1000, 1000, 4000000);
+assert.equal(underBudget.downsampled, false, "a window under the budget is read as-is");
+assert.equal(underBudget.outWidth, 100, "undecimated read keeps the full window width");
+assert.equal(underBudget.outResX, 1, "undecimated read keeps the native pixel size");
+
+// The regression: the whole image with no overview to fall back on.
+const noOverview = Zonal.planReadWindow([0, 0, 40000, 40000], [0, 0, 40000, 40000], 40000, 40000, 2048 * 2048);
+assert.equal(noOverview.pixels, 40000 * 40000, "full-res window is far over the budget");
+assert.ok(
+  noOverview.outWidth * noOverview.outHeight <= 2048 * 2048,
+  "coarsest-level overflow is still capped instead of read at full resolution"
+);
+
+const degenerate = Zonal.planReadWindow([0, 0, 10, 10], [10, 10, 10, 10], 10, 10, 100);
+assert.equal(degenerate.pixels, 0, "an empty intersection yields no pixels");
+assert.equal(degenerate.downsampled, false, "an empty window is not decimated");
+
 console.log("Zonal statistics core is valid.");

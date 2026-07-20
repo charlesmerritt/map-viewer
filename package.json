@@ -9,7 +9,7 @@
     "start": "serve -s public -l ${PORT:-3000}",
     "dev": "serve -s public -l 3000",
     "build:admin-boundaries": "node scripts/build-admin-boundaries.mjs",
-    "test": "node scripts/validate-admin-boundaries.mjs && node scripts/test-layer-groups.mjs && node scripts/test-state-groups.mjs && node scripts/test-zonal-core.mjs"
+    "test": "node scripts/validate-admin-boundaries.mjs && node scripts/test-layer-groups.mjs && node scripts/test-state-groups.mjs && node scripts/test-zonal-core.mjs && node scripts/test-draw-layer-order.mjs"
   },
   "dependencies": {
     "serve": "^14.2.4"

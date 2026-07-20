@@ -607,6 +607,7 @@
         const firstNonBase = allLayers.find((l) => l.id !== "basemap");
         if (firstNonBase) map.moveLayer("basemap", firstNonBase.id);
       }
+      window.DrawTools?.raiseLayers?.();
     } catch (err) {
       console.error("Failed to load layer", entry.name, err);
       entry.error = err.message || String(err);
@@ -765,6 +766,7 @@
       const firstNonBase = allLayers.find((l) => l.id !== "basemap");
       if (firstNonBase) map.moveLayer("basemap", firstNonBase.id);
     }
+    window.DrawTools?.raiseLayers?.();
   }
 
   function reorderLayersFromTopIds(topOrderedIds) {
@@ -835,6 +837,7 @@
         const firstNonBase = allLayers.find((l) => l.id !== "basemap");
         if (firstNonBase) map.moveLayer("basemap", firstNonBase.id);
       }
+      window.DrawTools?.raiseLayers?.();
 
       // Fit to bounds if first layer
       if (entry.__bounds) {

@@ -58,6 +58,50 @@
   }
 
   /**
+   * Pixel window covering `ibox` within an image of `width` x `height`
+   * spanning `imageBBox`, plus the read size to request for it.
+   *
+   * When the window exceeds `maxPixels` the read is decimated to fit
+   * (`outWidth`/`outHeight` shrink and `outResX`/`outResY` grow to
+   * match), so a raster with no usable overview still stays inside the
+   * budget instead of pulling its full-resolution window.
+   */
+  function planReadWindow(imageBBox, ibox, width, height, maxPixels) {
+    const resX = (imageBBox[2] - imageBBox[0]) / width;
+    const resY = (imageBBox[3] - imageBBox[1]) / height;
+    const x0 = Math.max(0, Math.floor((ibox[0] - imageBBox[0]) / resX));
+    const x1 = Math.min(width, Math.ceil((ibox[2] - imageBBox[0]) / resX));
+    const y0 = Math.max(0, Math.floor((imageBBox[3] - ibox[3]) / resY));
+    const y1 = Math.min(height, Math.ceil((imageBBox[3] - ibox[1]) / resY));
+    const winWidth = Math.max(0, x1 - x0);
+    const winHeight = Math.max(0, y1 - y0);
+    const pixels = winWidth * winHeight;
+
+    let outWidth = winWidth;
+    let outHeight = winHeight;
+    if (pixels > maxPixels) {
+      const scale = Math.sqrt(maxPixels / pixels);
+      outWidth = Math.max(1, Math.floor(winWidth * scale));
+      outHeight = Math.max(1, Math.floor(winHeight * scale));
+    }
+
+    return {
+      x0,
+      x1,
+      y0,
+      y1,
+      resX,
+      resY,
+      pixels,
+      outWidth,
+      outHeight,
+      outResX: outWidth > 0 ? (winWidth * resX) / outWidth : resX,
+      outResY: outHeight > 0 ? (winHeight * resY) / outHeight : resY,
+      downsampled: outWidth !== winWidth || outHeight !== winHeight,
+    };
+  }
+
+  /**
    * Even-odd scanline crossings: x coordinates where the horizontal
    * line at `y` crosses ring edges, sorted ascending. Consecutive
    * pairs bound "inside" spans.
@@ -195,6 +239,7 @@
     projectRings,
     ringsBBox,
     intersectBBox,
+    planReadWindow,
     rowCrossings,
     computeGridStats,
   };

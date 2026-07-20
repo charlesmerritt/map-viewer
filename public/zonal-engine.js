@@ -6,7 +6,8 @@
    1. Client-side (geotiff.js + proj4, both already loaded): open the
       COG (range requests for URLs, ArrayBuffer for uploaded files),
       read only the window covering the polygon — stepping down to an
-      overview when the full-res window would be too large — reproject
+      overview, then to a decimated read, when the full-res window
+      would be too large — reproject
       the polygon into the raster CRS, and run ZonalCore's scanline
       statistics. No server involved.
 
@@ -124,31 +125,36 @@
 
     // Pick the finest image (full res first, then overviews) whose
     // window over the polygon stays under the pixel budget. COG
-    // overviews share the full-res bounding box.
+    // overviews share the full-res bounding box. A raster with no
+    // overviews — or whose coarsest one is still too big — falls
+    // through with a decimated read plan rather than a full-res one.
     const imageCount = await tiff.getImageCount();
     let chosen = null;
     for (let k = 0; k < imageCount; k++) {
       const candidate = k === 0 ? image : await tiff.getImage(k);
-      const width = candidate.getWidth();
-      const height = candidate.getHeight();
-      const resX = (bboxR[2] - bboxR[0]) / width;
-      const resY = (bboxR[3] - bboxR[1]) / height;
-      const x0 = Math.max(0, Math.floor((ibox[0] - bboxR[0]) / resX));
-      const x1 = Math.min(width, Math.ceil((ibox[2] - bboxR[0]) / resX));
-      const y0 = Math.max(0, Math.floor((bboxR[3] - ibox[3]) / resY));
-      const y1 = Math.min(height, Math.ceil((bboxR[3] - ibox[1]) / resY));
-      const pixels = Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
-      chosen = { image: candidate, level: k, resX, resY, x0, x1, y0, y1, pixels };
-      if (pixels <= MAX_WINDOW_PIXELS) break;
+      const plan = Core.planReadWindow(
+        bboxR,
+        ibox,
+        candidate.getWidth(),
+        candidate.getHeight(),
+        MAX_WINDOW_PIXELS
+      );
+      chosen = Object.assign({ image: candidate, level: k }, plan);
+      if (plan.pixels <= MAX_WINDOW_PIXELS) break;
     }
     if (!chosen || chosen.x0 >= chosen.x1 || chosen.y0 >= chosen.y1) {
       throw new Error("The polygon does not overlap this raster.");
     }
 
-    const rasters = await chosen.image.readRasters({
+    const readOptions = {
       window: [chosen.x0, chosen.y0, chosen.x1, chosen.y1],
       samples: [0],
-    });
+    };
+    if (chosen.downsampled) {
+      readOptions.width = chosen.outWidth;
+      readOptions.height = chosen.outHeight;
+    }
+    const rasters = await chosen.image.readRasters(readOptions);
 
     let noData = null;
     try { noData = image.getGDALNoData(); } catch (_) {}
@@ -156,12 +162,12 @@
     const stats = Core.computeGridStats(
       {
         values: rasters[0],
-        width: chosen.x1 - chosen.x0,
-        height: chosen.y1 - chosen.y0,
+        width: chosen.outWidth,
+        height: chosen.outHeight,
         originX: bboxR[0] + chosen.x0 * chosen.resX,
         originY: bboxR[3] - chosen.y0 * chosen.resY,
-        resX: chosen.resX,
-        resY: chosen.resY,
+        resX: chosen.outResX,
+        resY: chosen.outResY,
         noData,
       },
       rings,
@@ -175,9 +181,9 @@
         crs,
         band: 1,
         overviewLevel: chosen.level,
-        pixelSize: chosen.resX,
-        windowPixels: chosen.pixels,
-        approximate: chosen.level > 0,
+        pixelSize: chosen.outResX,
+        windowPixels: chosen.outWidth * chosen.outHeight,
+        approximate: chosen.level > 0 || chosen.downsampled,
       },
     };
   }
