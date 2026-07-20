@@ -1,9 +1,13 @@
 /* ----------------------------------------------------------------
-   zonal-stats.js — UI scaffold for selected-polygon raster tools.
+   zonal-stats.js — selected-polygon raster tools.
 
-   This file intentionally stubs the processing logic. The current slice keeps
-   polygon selection, the zonal tools modal, layer selection, and Chart.js wiring
-   without attempting client-side/server-side zonal statistics or clipping yet.
+   Zones come from two places: built-in state/county polygons
+   (boundary-layers.js) and user-drawn polygons (draw-tools.js). Both
+   emit "boundary:selected". Statistics are computed by
+   zonal-engine.js — client-side via geotiff.js where the browser can
+   reach the pixels, or TiTiler's /cog/statistics for D2S tile layers.
+
+   Clip-to-extent remains a stub for a future slice.
    ---------------------------------------------------------------- */
 
 (function () {
@@ -14,6 +18,7 @@
   let selectedBoundary = null;
   let mode = "stats";
   let chart = null;
+  let running = false;
 
   function init() {
     const statsBtn = document.getElementById("zonal-open-stats");
@@ -24,6 +29,12 @@
       selectedBoundary = boundary;
       renderSelectionPanel(boundary);
     });
+    State.on("boundary:cleared", () => {
+      if (selectedBoundary?.kind !== "drawn") return;
+      selectedBoundary = null;
+      document.getElementById("zonal-selection")?.classList.add("hidden");
+      document.getElementById("zonal-empty")?.classList.remove("hidden");
+    });
 
     statsBtn?.addEventListener("click", () => openModal("stats"));
     clipBtn?.addEventListener("click", () => openModal("clip"));
@@ -33,27 +44,31 @@
     modal?.addEventListener("click", (event) => {
       if (event.target === modal) closeModal();
     });
-    document.getElementById("zonal-run-action")?.addEventListener("click", runStubAction);
+    document.getElementById("zonal-run-action")?.addEventListener("click", runAction);
+  }
+
+  function boundaryMeta(boundary) {
+    if (boundary.kind === "county") return `COUNTY ${boundary.geoid || ""}`;
+    if (boundary.kind === "state") return `STATE ${boundary.stusps || boundary.statefp || ""}`;
+    return "DRAWN POLYGON";
   }
 
   function renderSelectionPanel(boundary) {
     document.getElementById("zonal-empty")?.classList.add("hidden");
     document.getElementById("zonal-selection")?.classList.remove("hidden");
     document.getElementById("zonal-selected-name").textContent = boundary.name || "Selected polygon";
-    document.getElementById("zonal-selected-meta").textContent = boundary.kind === "county"
-      ? `COUNTY ${boundary.geoid || ""}`
-      : `STATE ${boundary.stusps || boundary.statefp || ""}`;
+    document.getElementById("zonal-selected-meta").textContent = boundaryMeta(boundary);
   }
 
   function openModal(nextMode) {
     selectedBoundary = selectedBoundary || window.BoundaryLayers?.getSelectedBoundary?.();
     if (!selectedBoundary) {
-      State.toast("Click a visible built-in state or county polygon first.", "error");
+      State.toast("Draw a polygon or click a visible built-in state/county polygon first.", "error");
       return;
     }
 
     mode = nextMode;
-    resetStubResults();
+    resetResults();
     populateRasterLayerSelect();
 
     const isClipMode = mode === "clip";
@@ -63,10 +78,11 @@
     document.getElementById("zonal-modal-zone").textContent = `${selectedBoundary.name} (${selectedBoundary.kind})`;
     document.getElementById("zonal-modal-hint").textContent = isClipMode
       ? "Stub: clipping to the selected polygon extent is not wired to processing yet."
-      : "Stub: zonal statistics processing is not implemented yet; this modal is ready for the future backend.";
+      : "Statistics are computed from the raster pixels whose centers fall inside the polygon. " +
+        "Large rasters are sampled from COG overviews to stay responsive.";
     document.getElementById("zonal-run-action").textContent = isClipMode
       ? "Stub clip"
-      : "Stub summarize";
+      : "Compute statistics";
     document.getElementById("zonal-modal").classList.remove("hidden");
   }
 
@@ -99,7 +115,7 @@
     return State.getLayers().filter((layer) => layer.type === "cog" || layer.type === "d2s-raster");
   }
 
-  function runStubAction() {
+  async function runAction() {
     const layer = selectedRasterLayer();
     if (!layer) {
       State.toast("Choose a raster layer first.", "error");
@@ -107,7 +123,7 @@
     }
 
     if (mode === "clip") {
-      renderStubMessage("Extent clipping is stubbed", [
+      renderRows("Extent clipping is stubbed", [
         ["Selected zone", selectedBoundary.name],
         ["Raster layer", layer.name],
         ["Planned behavior", "Create/display a raster clipped to this polygon extent"],
@@ -116,13 +132,67 @@
       return;
     }
 
-    renderStubMessage("Zonal statistics are stubbed", [
-      ["Selected zone", selectedBoundary.name],
-      ["Raster layer", layer.name],
-      ["Planned statistics", "count, mean, min, max, sum, nodata count, stddev"],
-    ]);
-    renderChartPlaceholder(layer.name);
-    State.toast("Zonal statistics are stubbed for now.", "info");
+    if (running) return;
+    running = true;
+    const runBtn = document.getElementById("zonal-run-action");
+    runBtn.disabled = true;
+    resetResults();
+    document.getElementById("zonal-status").textContent = "Computing statistics…";
+
+    try {
+      const { stats, meta } = await window.ZonalEngine.compute(layer, selectedBoundary.geometry);
+      renderStatsResult(layer, stats, meta);
+    } catch (err) {
+      console.error("Zonal statistics failed", err);
+      document.getElementById("zonal-status").textContent = "Failed: " + (err.message || err);
+      State.toast(err.message || String(err), "error");
+    } finally {
+      running = false;
+      runBtn.disabled = false;
+    }
+  }
+
+  function renderStatsResult(layer, stats, meta) {
+    if (!stats || stats.count === 0) {
+      const nodataNote = stats && stats.nodataCount > 0
+        ? ` (${formatNumber(stats.nodataCount)} nodata pixels inside the polygon)`
+        : "";
+      document.getElementById("zonal-status").textContent =
+        "No valid raster pixels inside this polygon" + nodataNote + ".";
+      return;
+    }
+
+    const rows = [
+      ["Valid pixels", formatNumber(stats.count)],
+      ["Mean", formatNumber(stats.mean)],
+      ["Min", formatNumber(stats.min)],
+      ["Max", formatNumber(stats.max)],
+      ["Sum", formatNumber(stats.sum)],
+      ["Std. dev.", formatNumber(stats.std)],
+    ];
+    if (stats.nodataCount != null) rows.push(["Nodata pixels", formatNumber(stats.nodataCount)]);
+    if (meta.median != null) rows.push(["Median", formatNumber(meta.median)]);
+
+    const notes = [];
+    if (meta.timestepLabel) notes.push(`timestep ${meta.timestepLabel}`);
+    if (meta.method === "titiler") {
+      notes.push("computed by TiTiler");
+    } else {
+      notes.push("computed in the browser");
+      if (meta.approximate) {
+        notes.push(`sampled from overview level ${meta.overviewLevel} (~${formatNumber(meta.pixelSize)} CRS units/pixel)`);
+      }
+    }
+    renderRows(`${layer.name} — ${notes.join(", ")}`, rows);
+    renderHistogram(layer.name, stats.histogram);
+  }
+
+  function formatNumber(value) {
+    if (value == null || Number.isNaN(value)) return "—";
+    if (Number.isInteger(value)) return value.toLocaleString();
+    const abs = Math.abs(value);
+    if (abs !== 0 && (abs >= 1e7 || abs < 1e-3)) return value.toExponential(4);
+    return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
   }
 
   function selectedRasterLayer() {
@@ -130,7 +200,7 @@
     return id ? State.getLayer(id) : null;
   }
 
-  function resetStubResults() {
+  function resetResults() {
     document.getElementById("zonal-results").classList.add("hidden");
     document.getElementById("zonal-results-body").innerHTML = "";
     document.getElementById("zonal-status").textContent = "";
@@ -140,7 +210,7 @@
     }
   }
 
-  function renderStubMessage(status, rows) {
+  function renderRows(status, rows) {
     document.getElementById("zonal-status").textContent = status;
     const tbody = document.getElementById("zonal-results-body");
     tbody.innerHTML = "";
@@ -157,18 +227,23 @@
     document.getElementById("zonal-results").classList.remove("hidden");
   }
 
-  function renderChartPlaceholder(layerName) {
-    if (typeof Chart === "undefined") return;
+  function renderHistogram(layerName, histogram) {
+    if (typeof Chart === "undefined" || !histogram || !histogram.counts?.length) return;
     const canvas = document.getElementById("zonal-chart");
     if (chart) chart.destroy();
+    const labels = histogram.counts.map((_, i) => {
+      const lo = histogram.edges[i];
+      const hi = histogram.edges[i + 1];
+      return hi == null ? formatNumber(lo) : `${formatNumber(lo)} – ${formatNumber(hi)}`;
+    });
     chart = new Chart(canvas, {
       type: "bar",
       data: {
-        labels: ["Count", "Mean", "Min", "Max", "Std. dev."],
+        labels,
         datasets: [{
-          label: `${layerName} — pending backend`,
-          data: [0, 0, 0, 0, 0],
-          backgroundColor: ["#374151", "#374151", "#374151", "#374151", "#374151"],
+          label: `${layerName} — pixel value distribution`,
+          data: histogram.counts,
+          backgroundColor: "#6ab048",
         }],
       },
       options: {
@@ -178,7 +253,7 @@
           legend: { labels: { color: "#e6edf3" } },
         },
         scales: {
-          x: { ticks: { color: "#9aa4b2" }, grid: { color: "#262d3a" } },
+          x: { ticks: { color: "#9aa4b2", maxRotation: 60, autoSkip: true }, grid: { color: "#262d3a" } },
           y: { ticks: { color: "#9aa4b2" }, grid: { color: "#262d3a" } },
         },
       },

@@ -16,8 +16,15 @@ database. The Railway deployment is just a static file server.
   picking from the built-in catalog (`public/layers.json`).
 - **Built-in boundaries** — toggle simplified US state and county polygons, including
   all states, all counties, all counties in a state, and individual states/counties.
-- **Zonal raster tools scaffold** — click a visible built-in state/county polygon and
-  open a Chart.js-backed modal for future raster summaries/clipping.
+- **Polygon drawing & zonal statistics** — draw arbitrary polygons on the map
+  (click to add vertices, double-click/Enter to finish) or click a built-in
+  state/county polygon, then summarize any raster layer over it: valid pixel
+  count, mean, min/max, sum, standard deviation, nodata count, and a value
+  histogram. Uploaded files and CORS-accessible COG URLs are computed entirely
+  in the browser with geotiff.js (reading only the polygon's window, using COG
+  overviews for large areas); TiTiler-streamed layers use the tile server's
+  `/cog/statistics` endpoint with a client-side fallback. Clip-to-extent
+  remains stubbed for a future slice.
 - **Per-layer controls** — visibility toggle, opacity slider, zoom-to-extent, remove.
 - **Layer groups** — multi-select layers, group/ungroup with a toolbar button or `G`,
   collapse groups, and scrub group members with the shared play/scrub time bar.

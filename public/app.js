@@ -1221,6 +1221,7 @@
     initSidebarResizer();
     initToast();
     initLayerToolbar();
+    if (window.DrawTools) window.DrawTools.init();
     if (window.ZonalStats) window.ZonalStats.init();
 
     State.on("layers:changed", renderLayerList);

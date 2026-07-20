@@ -86,10 +86,15 @@
           </p>
         </section>
 
-        <section class="panel hidden" id="zonal-panel">
+        <section class="panel" id="zonal-panel">
           <h2 class="panel-title">Zonal tools</h2>
+          <div class="zonal-draw-actions">
+            <button id="zonal-draw-btn" class="btn-ghost" title="Draw a polygon on the map (double-click or Enter to finish, Esc to cancel)">✏ Draw polygon</button>
+            <button id="zonal-clear-drawn-btn" class="btn-ghost" title="Remove all drawn polygons">Clear drawn</button>
+          </div>
           <p id="zonal-empty" class="empty-hint">
-            Toggle built-in state/county polygons, then click one on the map.
+            Draw a polygon on the map, or toggle built-in state/county polygons
+            and click one, then summarize a raster layer over it.
           </p>
           <div id="zonal-selection" class="hidden">
             <div class="zonal-selected-label">Selected polygon</div>
@@ -319,6 +324,9 @@
     <script src="state.js"></script>
     <script src="layers.js"></script>
     <script src="boundary-layers.js"></script>
+    <script src="draw-tools.js"></script>
+    <script src="zonal-core.js"></script>
+    <script src="zonal-engine.js"></script>
     <script src="zonal-stats.js"></script>
     <script src="timeslider.js"></script>
     <script src="app.js"></script>
