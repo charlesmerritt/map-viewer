@@ -17,8 +17,10 @@
       rel="stylesheet"
     />
 
-    <!-- geotiff.js — COG/GeoTIFF parsing -->
-    <script src="https://unpkg.com/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+    <!-- geotiff.js — COG/GeoTIFF parsing. 3.x fixes a BlockedSource
+         off-by-one that crashed range reads on block-aligned slices
+         ("can't access property offset"); see 2.1.3 readSliceData. -->
+    <script src="https://unpkg.com/geotiff@3.0.5/dist-browser/geotiff.js"></script>
 
     <!-- proj4 — reprojection support -->
     <script src="https://unpkg.com/proj4@2.11.0/dist/proj4-src.js"></script>
