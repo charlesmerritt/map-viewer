@@ -217,3 +217,14 @@ map-viewer/
   for a popup with properties).
 
 Open an issue or extend — everything is plain HTML/JS, no build step.
+
+---
+
+## Project Status (auto-generated 2026-07-01)
+
+**Git status:** On `main`, clean, fully in sync with `origin/main`. Last commit 3 weeks ago ("layer groups").
+
+**Maturity:** Mature — deployed (Railway), documented, has JS test scripts in `scripts/`, and already tracks its own gaps in the Roadmap section above.
+
+**Low-hanging fruit:**
+- No obvious low-hanging fruit beyond what's already tracked in "Roadmap / known gaps" above (no license file and no CI workflow exist, but given the small no-build-step scope that may be intentional rather than an oversight).
