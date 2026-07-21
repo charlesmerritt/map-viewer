@@ -70,7 +70,10 @@
   function resolveRasterSource(layer) {
     const timestep = currentTimestep(layer);
     if (timestep) {
-      return { kind: "url", url: timestep.url, label: timestep.label, cacheKey: layer.id + ":t" + timestep.index };
+      return httpSource(timestep.url, {
+        label: timestep.label,
+        cacheKey: layer.id + ":t" + timestep.index,
+      });
     }
     if (layer.type === "d2s-raster") {
       if (!layer.cogUrl) throw new Error("This tile layer has no COG URL to read from.");
@@ -81,9 +84,17 @@
       return { kind: "file", file: source.file, cacheKey: layer.id };
     }
     if (source && source.url) {
-      return { kind: "url", url: source.url, cacheKey: layer.id };
+      return httpSource(source.url, { cacheKey: layer.id });
     }
     throw new Error("Cannot locate raster data for this layer.");
+  }
+
+  // Any http(s) COG URL is computed server-side first (accurate and
+  // low-memory, so it scales to large rasters), falling back to the
+  // in-browser reader. A non-http URL (blob:/data:) has no server the
+  // stats endpoint could reach, so it stays client-side.
+  function httpSource(url, extra) {
+    return { kind: /^https?:/i.test(url) ? "titiler" : "url", url, ...extra };
   }
 
   function openTiff(source) {
@@ -202,7 +213,7 @@
   // ---- TiTiler engine ----
 
   async function computeTiTilerStats(cogUrl, geometry) {
-    const base = window.D2S.getTiTilerBase();
+    const base = window.D2S.getZonalStatsBase();
     const params = new URLSearchParams({
       url: cogUrl,
       histogram_bins: String(HISTOGRAM_BINS),
