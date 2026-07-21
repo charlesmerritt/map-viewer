@@ -185,4 +185,42 @@ const degenerate = Zonal.planReadWindow([0, 0, 10, 10], [10, 10, 10, 10], 10, 10
 assert.equal(degenerate.pixels, 0, "an empty intersection yields no pixels");
 assert.equal(degenerate.downsampled, false, "an empty window is not decimated");
 
+// ---- sampleFactor: native pixels represented by one read pixel ----
+
+assert.equal(Zonal.sampleFactor(1, 1, 1, 1), 1, "a full-resolution read represents itself");
+assert.equal(Zonal.sampleFactor(4, 4, 1, 1), 16, "a 4x-per-dim read pixel covers 16 native pixels");
+assert.equal(Zonal.sampleFactor(2, 2, 1, 1), 4, "a factor-2 overview pixel covers 4 native pixels");
+assert.equal(Zonal.sampleFactor(1, 1, 0, 0), 1, "a degenerate native size falls back to 1");
+
+// ---- scaling a decimated read recovers the true total (constant field) ----
+
+// 100x100 native raster of constant 3 over [0,0,100,100]; a polygon
+// covering the whole extent has a true sum of 30000 over 10000 pixels.
+const plan = Zonal.planReadWindow([0, 0, 100, 100], [0, 0, 100, 100], 100, 100, 625);
+assert.equal(plan.downsampled, true, "the full window is forced below the 625 budget");
+assert.equal(plan.outWidth, 25, "decimated to 25 columns");
+assert.equal(plan.outResX, 4, "read resolution coarsens to 4 CRS units/pixel");
+
+// Simulate the decimated read: a 25x25 grid of the same constant value.
+const sampled = Zonal.computeGridStats(
+  {
+    values: new Float64Array(plan.outWidth * plan.outHeight).fill(3),
+    width: plan.outWidth,
+    height: plan.outHeight,
+    originX: 0,
+    originY: 100,
+    resX: plan.outResX,
+    resY: plan.outResY,
+    noData: null,
+  },
+  [square(0, 0, 100, 100)]
+);
+assert.equal(sampled.count, 625, "the decimated read sees 625 pixels");
+assert.equal(sampled.sum, 1875, "sampled sum is short of the true total");
+
+const factor = Zonal.sampleFactor(plan.outResX, plan.outResY, 1, 1);
+assert.equal(Math.round(sampled.count * factor), 10000, "scaled count recovers the true pixel count");
+assert.equal(sampled.sum * factor, 30000, "scaled sum recovers the true polygon total");
+assert.equal((sampled.sum * factor) / (sampled.count * factor), sampled.mean, "scaling preserves mean = sum / count");
+
 console.log("Zonal statistics core is valid.");

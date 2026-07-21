@@ -162,12 +162,19 @@
       return;
     }
 
+    // On an approximate read (an overview or a decimated window) the
+    // sum and pixel count come from a coarser grid, so scale them back
+    // to full-resolution estimates and mark them. Mean/min/max/std are
+    // scale-free and shown as-is.
+    const factor = meta.approximate && meta.sampleFactor > 1 ? meta.sampleFactor : 1;
+    const est = factor > 1 ? " (est.)" : "";
+
     const rows = [
-      ["Valid pixels", formatNumber(stats.count)],
+      [`Valid pixels${est}`, formatNumber(factor > 1 ? Math.round(stats.count * factor) : stats.count)],
       ["Mean", formatNumber(stats.mean)],
       ["Min", formatNumber(stats.min)],
       ["Max", formatNumber(stats.max)],
-      ["Sum", formatNumber(stats.sum)],
+      [`Sum${est}`, formatNumber(stats.sum * factor)],
       ["Std. dev.", formatNumber(stats.std)],
     ];
     if (stats.nodataCount != null) rows.push(["Nodata pixels", formatNumber(stats.nodataCount)]);
@@ -180,7 +187,11 @@
     } else {
       notes.push("computed in the browser");
       if (meta.approximate) {
-        notes.push(`sampled from overview level ${meta.overviewLevel} (~${formatNumber(meta.pixelSize)} CRS units/pixel)`);
+        const how = meta.overviewLevel > 0
+          ? `overview level ${meta.overviewLevel}`
+          : "a downsampled read";
+        notes.push(`sampled from ${how} at ~${formatNumber(meta.pixelSize)} CRS units/pixel`);
+        if (factor > 1) notes.push("Sum and Valid pixels are full-resolution estimates");
       }
     }
     renderRows(`${layer.name} — ${notes.join(", ")}`, rows);

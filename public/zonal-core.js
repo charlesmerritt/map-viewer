@@ -102,6 +102,20 @@
   }
 
   /**
+   * How many native (full-resolution) pixels each read pixel stands for.
+   * 1 for a full-resolution read; e.g. 16 for a read decimated 4x in
+   * each dimension, or for a factor-4 overview. Multiply a sampled
+   * count or sum by this to estimate the true full-resolution total.
+   * Mean/min/max/std are scale-free and need no adjustment.
+   */
+  function sampleFactor(readResX, readResY, nativeResX, nativeResY) {
+    const nativeArea = Math.abs(nativeResX * nativeResY);
+    if (!nativeArea) return 1;
+    const factor = Math.abs(readResX * readResY) / nativeArea;
+    return factor > 0 ? factor : 1;
+  }
+
+  /**
    * Even-odd scanline crossings: x coordinates where the horizontal
    * line at `y` crosses ring edges, sorted ascending. Consecutive
    * pairs bound "inside" spans.
@@ -240,6 +254,7 @@
     ringsBBox,
     intersectBBox,
     planReadWindow,
+    sampleFactor,
     rowCrossings,
     computeGridStats,
   };

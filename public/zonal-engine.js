@@ -174,6 +174,11 @@
       { histogramBins: HISTOGRAM_BINS }
     );
 
+    // Native (full-resolution) pixel size from the level-0 image, so
+    // sampled totals over a coarser read can be scaled back up.
+    const nativeResX = (bboxR[2] - bboxR[0]) / image.getWidth();
+    const nativeResY = (bboxR[3] - bboxR[1]) / image.getHeight();
+
     return {
       stats,
       meta: {
@@ -184,6 +189,12 @@
         pixelSize: chosen.outResX,
         windowPixels: chosen.outWidth * chosen.outHeight,
         approximate: chosen.level > 0 || chosen.downsampled,
+        sampleFactor: Core.sampleFactor(
+          chosen.outResX,
+          chosen.outResY,
+          nativeResX,
+          nativeResY
+        ),
       },
     };
   }
