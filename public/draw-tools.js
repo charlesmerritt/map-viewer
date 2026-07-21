@@ -30,6 +30,10 @@
     activeVertices: "draw-active-vertices",
   };
 
+  // How close (in screen pixels) the closing double-click must land to the
+  // first vertex to snap the ring shut on it rather than leave a sliver.
+  const SNAP_CLOSE_PIXELS = 12;
+
   let active = false;
   let vertices = [];
   let cursorPoint = null;
@@ -138,7 +142,20 @@
   function onMapDblClick(event) {
     if (!active) return;
     event.preventDefault();
+    // The double-click's first click already added a vertex here. If that
+    // landed near the first vertex, drop it so the polygon snaps closed on
+    // the start point instead of leaving a stray vertex beside it.
+    if (vertices.length >= 4 && nearFirstVertex(event.point)) {
+      vertices.pop();
+    }
     finishPolygon();
+  }
+
+  function nearFirstVertex(pixel) {
+    const map = State.getMap();
+    if (!map || vertices.length === 0) return false;
+    const first = map.project(vertices[0]);
+    return Math.hypot(first.x - pixel.x, first.y - pixel.y) <= SNAP_CLOSE_PIXELS;
   }
 
   function onKeyDown(event) {
