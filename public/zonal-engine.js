@@ -269,5 +269,19 @@
     return result;
   }
 
-  window.ZonalEngine = { compute };
+  /**
+   * Drop cached GeoTIFF handles for a removed layer so their in-memory
+   * buffers (whole file for uploaded rasters) can be garbage collected.
+   * Covers both the plain layer.id key and the layer.id + ":t" + index
+   * keys used for time-series sources.
+   */
+  function releaseLayer(layerId) {
+    if (!layerId) return;
+    const timePrefix = layerId + ":t";
+    tiffCache.forEach((_, key) => {
+      if (key === layerId || key.startsWith(timePrefix)) tiffCache.delete(key);
+    });
+  }
+
+  window.ZonalEngine = { compute, releaseLayer };
 })();

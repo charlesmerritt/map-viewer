@@ -740,6 +740,7 @@
       map.removeSource(layer.sourceId);
     }
     if (layer.timeCache) layer.timeCache.clear();
+    window.ZonalEngine?.releaseLayer?.(layer.id);
     State.removeLayer(layer.id);
     State.reconcileActiveTimeLayer();
   }
