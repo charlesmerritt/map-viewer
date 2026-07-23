@@ -28,15 +28,18 @@
     activeSource: "draw-active-source",
     activeLine: "draw-active-line",
     activeVertices: "draw-active-vertices",
+    activeSnap: "draw-active-snap",
   };
 
-  // How close (in screen pixels) the closing double-click must land to the
-  // first vertex to snap the ring shut on it rather than leave a sliver.
+  // How close (in screen pixels) the cursor must be to the first vertex to
+  // snap: the closing double-click drops the stray vertex, and while
+  // hovering the preview line closes onto it and it lights up.
   const SNAP_CLOSE_PIXELS = 12;
 
   let active = false;
   let vertices = [];
   let cursorPoint = null;
+  let snapping = false; // cursor is within snap range of the first vertex
   let drawnCounter = 0;
   const drawnFeatures = [];
   let selectedDrawnId = null;
@@ -98,6 +101,7 @@
     active = true;
     vertices = [];
     cursorPoint = null;
+    snapping = false;
     map.doubleClickZoom.disable();
     map.getCanvas().style.cursor = "crosshair";
     toolbarButton?.classList.add("active");
@@ -115,6 +119,7 @@
     active = false;
     vertices = [];
     cursorPoint = null;
+    snapping = false;
     toolbarButton?.classList.remove("active");
     if (map) {
       map.doubleClickZoom.enable();
@@ -136,7 +141,12 @@
   function onMapMouseMove(event) {
     if (!active || vertices.length === 0) return;
     cursorPoint = [event.lngLat.lng, event.lngLat.lat];
-    updateActiveSource(State.getMap());
+    // Once there are enough vertices to close, hovering near the first one
+    // previews the snap so the user can see where the ring will shut.
+    snapping = vertices.length >= 3 && nearFirstVertex(event.point);
+    const map = State.getMap();
+    map.getCanvas().style.cursor = snapping ? "pointer" : "crosshair";
+    updateActiveSource(map);
   }
 
   function onMapDblClick(event) {
@@ -286,6 +296,20 @@
           "circle-stroke-width": 1.5,
         },
       });
+      // Ring around the first vertex when the cursor is snapped to it,
+      // signalling "double-click here to close".
+      map.addLayer({
+        id: IDS.activeSnap,
+        type: "circle",
+        source: IDS.activeSource,
+        filter: ["==", ["get", "snap"], true],
+        paint: {
+          "circle-radius": 8,
+          "circle-color": "rgba(240,231,255,0.2)",
+          "circle-stroke-color": "#f0e7ff",
+          "circle-stroke-width": 2,
+        },
+      });
     }
   }
 
@@ -302,6 +326,7 @@
       IDS.drawnSelectedLine,
       IDS.activeLine,
       IDS.activeVertices,
+      IDS.activeSnap,
     ].forEach((id) => {
       if (map.getLayer(id)) map.moveLayer(id);
     });
@@ -326,7 +351,9 @@
     const features = [];
     if (active && vertices.length > 0) {
       const line = vertices.slice();
-      if (cursorPoint) line.push(cursorPoint);
+      // When snapping, run the trailing segment back to the first vertex so
+      // the ring visibly closes; otherwise it follows the cursor.
+      if (cursorPoint) line.push(snapping ? vertices[0] : cursorPoint);
       if (line.length >= 2) {
         features.push({
           type: "Feature",
@@ -334,10 +361,10 @@
           geometry: { type: "LineString", coordinates: line },
         });
       }
-      vertices.forEach((point) => {
+      vertices.forEach((point, index) => {
         features.push({
           type: "Feature",
-          properties: {},
+          properties: { snap: snapping && index === 0 },
           geometry: { type: "Point", coordinates: point },
         });
       });
