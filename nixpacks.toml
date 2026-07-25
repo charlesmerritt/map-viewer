@@ -1,8 +1,9 @@
 # Railway / Nixpacks build configuration.
 # The viewer is a pure static site; install dependencies with pnpm and run `serve`.
 
+# pnpm 11.2.2 requires Node >= 22.13 (uses node:sqlite), so build on Node 22.
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_22"]
 
 # corepack bundled with nodejs_20 is too old to launch pnpm 11's ESM shim
 # (ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING), so upgrade it before enabling.
