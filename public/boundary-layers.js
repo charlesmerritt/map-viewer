@@ -402,6 +402,7 @@
     if (stateClickHandlerAttached) return;
     map.on("click", IDS.statesFill, async (event) => {
       if (window.DrawTools?.isActive?.()) return;
+      if (window.DrawTools?.isPointOnDrawnPolygon?.(event.point)) return;
       if (map.getLayer(IDS.countiesFill)) {
         const countyFeatures = map.queryRenderedFeatures(event.point, {
           layers: [IDS.countiesFill],
@@ -428,6 +429,7 @@
     if (countyClickHandlerAttached) return;
     map.on("click", IDS.countiesFill, async (event) => {
       if (window.DrawTools?.isActive?.()) return;
+      if (window.DrawTools?.isPointOnDrawnPolygon?.(event.point)) return;
       const feature = event.features && event.features[0];
       if (!feature) return;
       const geoid = String(feature.properties?.geoid || feature.properties?.GEOID || "");

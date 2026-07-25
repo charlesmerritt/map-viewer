@@ -13,6 +13,7 @@
      startDrawing()
      clearAll()
      raiseLayers()  — re-stack the drawn layers above the rasters
+     isPointOnDrawnPolygon(point) — a drawn polygon is under this screen point
    ---------------------------------------------------------------- */
 
 (function () {
@@ -340,6 +341,17 @@
     if (feature) selectDrawn(feature);
   }
 
+  // Is a finished drawn polygon rendered at this screen point? The built-in
+  // state/county click handlers call this to defer to a drawn zone sitting on
+  // top of them — otherwise both their handler and onDrawnPolygonClick fire for
+  // the same click and the selection flips to whichever runs last. Mirrors how
+  // the state handler already defers to counties under the cursor.
+  function isPointOnDrawnPolygon(point) {
+    const map = State.getMap();
+    if (!map || !map.getLayer(IDS.drawnFill)) return false;
+    return map.queryRenderedFeatures(point, { layers: [IDS.drawnFill] }).length > 0;
+  }
+
   function updateDrawnSource(map) {
     const source = map && map.getSource(IDS.drawnSource);
     if (source) source.setData({ type: "FeatureCollection", features: drawnFeatures });
@@ -383,5 +395,5 @@
     return bbox.every(Number.isFinite) ? bbox : null;
   }
 
-  window.DrawTools = { init, isActive, startDrawing, clearAll, raiseLayers };
+  window.DrawTools = { init, isActive, startDrawing, clearAll, raiseLayers, isPointOnDrawnPolygon };
 })();
