@@ -4,8 +4,14 @@
 [phases.setup]
 nixPkgs = ["nodejs_20"]
 
+# corepack bundled with nodejs_20 is too old to launch pnpm 11's ESM shim
+# (ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING), so upgrade it before enabling.
 [phases.install]
-cmds = ["corepack enable", "pnpm install --prod --frozen-lockfile"]
+cmds = [
+  "npm install -g corepack@latest",
+  "corepack enable",
+  "pnpm install --prod --frozen-lockfile",
+]
 
 [start]
 cmd = "pnpm start"
