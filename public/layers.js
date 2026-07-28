@@ -607,6 +607,7 @@
         const firstNonBase = allLayers.find((l) => l.id !== "basemap");
         if (firstNonBase) map.moveLayer("basemap", firstNonBase.id);
       }
+      window.DrawTools?.raiseLayers?.();
     } catch (err) {
       console.error("Failed to load layer", entry.name, err);
       entry.error = err.message || String(err);
@@ -739,6 +740,7 @@
       map.removeSource(layer.sourceId);
     }
     if (layer.timeCache) layer.timeCache.clear();
+    window.ZonalEngine?.releaseLayer?.(layer.id);
     State.removeLayer(layer.id);
     State.reconcileActiveTimeLayer();
   }
@@ -765,6 +767,7 @@
       const firstNonBase = allLayers.find((l) => l.id !== "basemap");
       if (firstNonBase) map.moveLayer("basemap", firstNonBase.id);
     }
+    window.DrawTools?.raiseLayers?.();
   }
 
   function reorderLayersFromTopIds(topOrderedIds) {
@@ -835,6 +838,7 @@
         const firstNonBase = allLayers.find((l) => l.id !== "basemap");
         if (firstNonBase) map.moveLayer("basemap", firstNonBase.id);
       }
+      window.DrawTools?.raiseLayers?.();
 
       // Fit to bounds if first layer
       if (entry.__bounds) {

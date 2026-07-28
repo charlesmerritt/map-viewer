@@ -21,7 +21,7 @@
   const BASE_LAYERS = [
     {
       name: "Carto Dark",
-      url: "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      url: "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       maxZoom: 19,
@@ -50,7 +50,7 @@
     },
     {
       name: "Carto Voyager",
-      url: "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      url: "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       maxZoom: 19,
@@ -1221,6 +1221,7 @@
     initSidebarResizer();
     initToast();
     initLayerToolbar();
+    if (window.DrawTools) window.DrawTools.init();
     if (window.ZonalStats) window.ZonalStats.init();
 
     State.on("layers:changed", renderLayerList);

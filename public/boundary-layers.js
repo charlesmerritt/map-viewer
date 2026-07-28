@@ -401,6 +401,8 @@
   function attachStateClickHandler(map) {
     if (stateClickHandlerAttached) return;
     map.on("click", IDS.statesFill, async (event) => {
+      if (window.DrawTools?.isActive?.()) return;
+      if (window.DrawTools?.isPointOnDrawnPolygon?.(event.point)) return;
       if (map.getLayer(IDS.countiesFill)) {
         const countyFeatures = map.queryRenderedFeatures(event.point, {
           layers: [IDS.countiesFill],
@@ -415,10 +417,10 @@
       if (fullFeature) selectBoundary("state", fullFeature);
     });
     map.on("mouseenter", IDS.statesFill, () => {
-      map.getCanvas().style.cursor = "pointer";
+      if (!window.DrawTools?.isActive?.()) map.getCanvas().style.cursor = "pointer";
     });
     map.on("mouseleave", IDS.statesFill, () => {
-      map.getCanvas().style.cursor = "";
+      if (!window.DrawTools?.isActive?.()) map.getCanvas().style.cursor = "";
     });
     stateClickHandlerAttached = true;
   }
@@ -426,6 +428,8 @@
   function attachCountyClickHandler(map) {
     if (countyClickHandlerAttached) return;
     map.on("click", IDS.countiesFill, async (event) => {
+      if (window.DrawTools?.isActive?.()) return;
+      if (window.DrawTools?.isPointOnDrawnPolygon?.(event.point)) return;
       const feature = event.features && event.features[0];
       if (!feature) return;
       const geoid = String(feature.properties?.geoid || feature.properties?.GEOID || "");
@@ -434,10 +438,10 @@
       if (fullFeature) selectBoundary("county", fullFeature);
     });
     map.on("mouseenter", IDS.countiesFill, () => {
-      map.getCanvas().style.cursor = "pointer";
+      if (!window.DrawTools?.isActive?.()) map.getCanvas().style.cursor = "pointer";
     });
     map.on("mouseleave", IDS.countiesFill, () => {
-      map.getCanvas().style.cursor = "";
+      if (!window.DrawTools?.isActive?.()) map.getCanvas().style.cursor = "";
     });
     countyClickHandlerAttached = true;
   }

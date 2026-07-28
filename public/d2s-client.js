@@ -198,8 +198,22 @@
   // Singleton instance
   let client = null;
 
-  // TiTiler base URL (can work independently of D2S connection)
+  // TiTiler base URL for map TILES (can work independently of D2S connection)
   let titilerBase = "https://tt.d2s.org";
+
+  // Separate TiTiler base for ZONAL STATISTICS. tt.d2s.org serves tiles
+  // fine (image GETs need no CORS) but sends no CORS headers, so the
+  // browser's POST /cog/statistics is blocked there. This points at a
+  // self-hosted TiTiler with CORS enabled for GET,POST. Overridable for
+  // dev via ?statsBase= or localStorage("zonalStatsBase").
+  let zonalStatsBase = "https://titiler-production-228c.up.railway.app";
+  try {
+    const override =
+      new URLSearchParams(location.search).get("statsBase") ||
+      localStorage.getItem("zonalStatsBase");
+    if (override) zonalStatsBase = override;
+  } catch (_) {}
+  zonalStatsBase = zonalStatsBase.replace(/\/$/, "");
 
   window.D2S = {
     connect(baseUrl, apiKey) {
@@ -231,6 +245,14 @@
 
     setTiTilerBase(url) {
       titilerBase = url.replace(/\/$/, "");
+    },
+
+    getZonalStatsBase() {
+      return zonalStatsBase;
+    },
+
+    setZonalStatsBase(url) {
+      zonalStatsBase = url.replace(/\/$/, "");
     },
 
     buildTiTilerTileUrl(cogUrl, options = {}) {

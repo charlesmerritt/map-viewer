@@ -110,7 +110,23 @@ a:hover {
 }
 #zonal-panel {
   flex: 0 0 auto;
-  max-height: 190px;
+  max-height: 230px;
+}
+.zonal-draw-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* Map draw control */
+.draw-ctrl-btn {
+  font-size: 15px;
+  line-height: 1;
+  color: #333;
+}
+.draw-ctrl-btn.active {
+  background: #c084fc;
+  color: #1c2230;
 }
 
 .panel-title {
