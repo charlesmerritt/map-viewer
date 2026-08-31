@@ -2,24 +2,60 @@
 /*
  * Build the static administrative boundary assets used by public/boundary-layers.js.
  *
- * The source shapefiles are intentionally not committed. Re-run this script when those
- * files change or when a different simplification tolerance is needed.
+ * Sources are the Census Bureau's pre-generalized Cartographic Boundary Files
+ * (https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html).
+ * These are cartographically simplified with hierarchy and alignment maintained,
+ * so no additional simplification is applied here. The Census zips are downloaded
+ * automatically; override with US_STATES_SHP / US_COUNTIES_SHP to use a local
+ * shapefile or a different URL. Re-run this script when the source vintage changes.
+ *
+ * States and counties must come from the same vintage year: Census warns that
+ * geographic areas may not align across years.
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-const STATE_SHAPEFILE =
-  process.env.US_STATES_SHP || "/mnt/d/tl_2022_us_state/tl_2022_us_state.shp";
-const COUNTY_SHAPEFILE =
-  process.env.US_COUNTIES_SHP || "/mnt/d/county_p010g.shp_nt00934/countyp010g.shp";
+const STATE_SOURCE =
+  process.env.US_STATES_SHP ||
+  "https://www2.census.gov/geo/tiger/GENZ2022/shp/cb_2022_us_state_5m.zip";
+const COUNTY_SOURCE =
+  process.env.US_COUNTIES_SHP ||
+  "https://www2.census.gov/geo/tiger/GENZ2022/shp/cb_2022_us_county_5m.zip";
 
 const OUT_STATES = "public/data/us-states.geojson";
 const OUT_COUNTIES = "public/data/us-counties.geojson";
 const OUT_INDEX = "public/data/us-admin-index.json";
-const SIMPLIFY_TOLERANCE = process.env.ADMIN_BOUNDARY_TOLERANCE || "0.005";
+
+async function resolveShapefile(source, workDir) {
+  if (!/^https?:\/\//.test(source)) return source;
+
+  const zipPath = join(workDir, "source.zip");
+  const extractDir = join(workDir, "extracted");
+  mkdirSync(extractDir, { recursive: true });
+
+  const response = await fetch(source);
+  if (!response.ok) {
+    throw new Error(`Failed to download ${source}: HTTP ${response.status}`);
+  }
+  writeFileSync(zipPath, Buffer.from(await response.arrayBuffer()));
+  execFileSync("unzip", ["-q", zipPath, "-d", extractDir], { stdio: "inherit" });
+
+  const shapefiles = readdirSync(extractDir).filter((name) => name.endsWith(".shp"));
+  if (shapefiles.length !== 1) {
+    throw new Error(`Expected one shapefile in ${source}, found ${shapefiles.length}`);
+  }
+  return join(extractDir, shapefiles[0]);
+}
 
 function runOgr2Ogr(outputPath, sourcePath, selectedFields) {
   execFileSync(
@@ -33,8 +69,6 @@ function runOgr2Ogr(outputPath, sourcePath, selectedFields) {
       "EPSG:4326",
       "-select",
       selectedFields,
-      "-simplify",
-      SIMPLIFY_TOLERANCE,
       "-lco",
       "RFC7946=YES",
       "-lco",
@@ -53,9 +87,30 @@ function writeJson(path, data) {
   writeFileSync(path, JSON.stringify(data, null, 0));
 }
 
+/*
+ * MapLibre GeoJSON sources only render Polygon/MultiPolygon geometry. Some
+ * shapefiles (e.g. the CB 500k county file) contain sliver features that
+ * ogr2ogr exports as GeometryCollection; keep their polygon parts as a
+ * MultiPolygon and drop anything else.
+ */
+function flattenToPolygons(geometry) {
+  if (geometry.type === "Polygon" || geometry.type === "MultiPolygon") return geometry;
+  if (geometry.type === "GeometryCollection") {
+    const polygons = [];
+    for (const part of geometry.geometries) {
+      if (part.type === "Polygon") polygons.push(part.coordinates);
+      else if (part.type === "MultiPolygon") polygons.push(...part.coordinates);
+    }
+    return polygons.length ? { type: "MultiPolygon", coordinates: polygons } : null;
+  }
+  return null;
+}
+
 function normalizeStates(rawStates) {
   const features = rawStates.features.map((feature) => {
     const properties = feature.properties || {};
+    const geometry = flattenToPolygons(feature.geometry);
+    if (!geometry) throw new Error(`State feature has no polygon geometry: ${JSON.stringify(properties)}`);
     return {
       type: "Feature",
       properties: {
@@ -63,7 +118,7 @@ function normalizeStates(rawStates) {
         stusps: String(properties.STUSPS || ""),
         name: String(properties.NAME || ""),
       },
-      geometry: feature.geometry,
+      geometry,
     };
   });
 
@@ -71,25 +126,29 @@ function normalizeStates(rawStates) {
   return { type: "FeatureCollection", features };
 }
 
-function normalizeCounties(rawCounties) {
+function normalizeCounties(rawCounties, stateAbbreviations) {
   const features = rawCounties.features.flatMap((feature) => {
     const properties = feature.properties || {};
-    const geoid = String(properties.ADMIN_FIPS || "");
-    const name = String(properties.ADMIN_NAME || properties.NAME || "").trim();
+    const geoid = String(properties.GEOID || properties.ADMIN_FIPS || "");
+    const name = String(properties.NAME || properties.ADMIN_NAME || "").trim();
 
-    // The source county shapefile includes a few blank-name state-water records
-    // such as 17000 and 55000. They are not county polygons users can select.
+    // Older sources include a few blank-name state-water records such as
+    // 17000 and 55000. They are not county polygons users can select.
     if (!geoid || !name) return [];
+
+    const statefp = String(properties.STATEFP || properties.STATE_FIPS || "");
+    const stusps = stateAbbreviations.get(statefp);
+    if (!stusps) {
+      throw new Error(`County ${geoid} (${name}) has state FIPS ${statefp} with no matching state`);
+    }
+
+    const geometry = flattenToPolygons(feature.geometry);
+    if (!geometry) return [];
 
     return [{
       type: "Feature",
-      properties: {
-        geoid,
-        statefp: String(properties.STATE_FIPS || ""),
-        stusps: String(properties.STATE || ""),
-        name,
-      },
-      geometry: feature.geometry,
+      properties: { geoid, statefp, stusps, name },
+      geometry,
     }];
   });
 
@@ -130,25 +189,30 @@ function buildIndex(states, counties) {
     stateCount: stateEntries.length,
     countyCount: counties.features.length,
     sources: {
-      states: STATE_SHAPEFILE,
-      counties: COUNTY_SHAPEFILE,
-      simplificationToleranceDegrees: Number(SIMPLIFY_TOLERANCE),
+      states: STATE_SOURCE,
+      counties: COUNTY_SOURCE,
     },
     states: stateEntries,
   };
 }
 
-function main() {
+async function main() {
   const tmp = mkdtempSync(join(tmpdir(), "admin-boundaries-"));
   try {
+    const stateShapefile = await resolveShapefile(STATE_SOURCE, join(tmp, "states"));
+    const countyShapefile = await resolveShapefile(COUNTY_SOURCE, join(tmp, "counties"));
+
     const rawStatesPath = join(tmp, "states.geojson");
     const rawCountiesPath = join(tmp, "counties.geojson");
 
-    runOgr2Ogr(rawStatesPath, STATE_SHAPEFILE, "STATEFP,STUSPS,NAME");
-    runOgr2Ogr(rawCountiesPath, COUNTY_SHAPEFILE, "ADMIN_NAME,ADMIN_FIPS,STATE,STATE_FIPS");
+    runOgr2Ogr(rawStatesPath, stateShapefile, "STATEFP,STUSPS,NAME");
+    runOgr2Ogr(rawCountiesPath, countyShapefile, "STATEFP,GEOID,NAME");
 
     const states = normalizeStates(readJson(rawStatesPath));
-    const counties = normalizeCounties(readJson(rawCountiesPath));
+    const stateAbbreviations = new Map(
+      states.features.map((state) => [state.properties.statefp, state.properties.stusps])
+    );
+    const counties = normalizeCounties(readJson(rawCountiesPath), stateAbbreviations);
     const index = buildIndex(states, counties);
 
     writeJson(OUT_STATES, states);

@@ -21,6 +21,12 @@ function assertFeatureCollection(path, requiredProperties) {
   for (const feature of data.features) {
     assert.equal(feature.type, "Feature", `${path} contains a non-Feature item`);
     assert.ok(feature.geometry, `${path} feature is missing geometry`);
+    // MapLibre GeoJSON sources only render Polygon/MultiPolygon. Other
+    // geometry types (e.g. GeometryCollection) are silently dropped.
+    assert.ok(
+      feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon",
+      `${path} feature has unsupported geometry type ${feature.geometry.type}`
+    );
     for (const property of requiredProperties) {
       assert.ok(
         Object.hasOwn(feature.properties || {}, property),
