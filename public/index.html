@@ -267,8 +267,9 @@
             <input type="file" id="file-input" accept=".geojson,.json,.tif,.tiff" />
           </label>
           <p class="hint">
-            Supports <code>.geojson</code>, <code>.json</code>,
-            <code>.tif</code>/<code>.tiff</code> (COG). Files stay in your browser — nothing is uploaded.
+            Supports <code>.geojson</code>, <code>.json</code>, and georeferenced
+            <code>.tif</code>/<code>.tiff</code> COGs. Raster uploads are streamed to this
+            server and read through TiTiler; GeoJSON stays in your browser.
           </p>
         </div>
 
@@ -323,6 +324,7 @@
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
     <script src="layer-groups-core.js"></script>
+    <script src="raster-upload.js"></script>
     <script src="state.js"></script>
     <script src="layers.js"></script>
     <script src="boundary-layers.js"></script>
@@ -331,6 +333,7 @@
     <script src="zonal-engine.js"></script>
     <script src="zonal-stats.js"></script>
     <script src="timeslider.js"></script>
+    <script src="/env.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

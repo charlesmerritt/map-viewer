@@ -4,8 +4,10 @@ A lightweight, static web map viewer for [PERSEUS](https://perseus.uga.edu) fore
 outputs. Supports Cloud-Optimized GeoTIFF (COG) rasters, GeoJSON vectors, and
 time-series layers with play/scrub controls.
 
-Everything renders client-side in the browser — no server, no tile cooker, no
-database. The Railway deployment is just a static file server.
+Map rendering remains client-side. The Node server serves the app and provides a
+streaming, byte-range-capable upload endpoint so local COGs can be consumed by the
+same external TiTiler used for remote COG URLs. No tile cooker or database is
+included.
 
 ---
 
@@ -24,10 +26,10 @@ database. The Railway deployment is just a static file server.
   add by URL) are computed server-side via a TiTiler `/cog/statistics` endpoint —
   accurate and low-memory, so it scales to CONUS-sized rasters — falling back to
   in-browser geotiff.js if that request fails. Note this sends the COG URL and
-  your polygon to that stats server. Uploaded files and `blob:`/`data:` sources
-  have no server to reach, so they are computed entirely in the browser with
-  geotiff.js (reading only the polygon's window, using COG overviews for large
-  areas). Clip-to-extent remains stubbed for a future slice.
+  your polygon to that stats server. Uploaded COGs are streamed to temporary app
+  storage and exposed through a public byte-range URL, so they use the same
+  TiTiler rendering and statistics paths as remote COGs. Uploaded GeoJSON stays
+  entirely in the browser. Clip-to-extent remains stubbed for a future slice.
 - **Per-layer controls** — visibility toggle, opacity slider, zoom-to-extent, remove.
 - **Layer groups** — multi-select layers, group/ungroup with a toolbar button or `G`,
   collapse groups, and scrub group members with the shared play/scrub time bar.
@@ -51,9 +53,11 @@ pnpm dev
 # open http://localhost:3000
 ```
 
-Since this is a pure static app, you can also serve `public/` with any static
-file server — `python -m http.server`, `caddy file-server`, `pnpm dlx http-server`,
-etc.
+Serving `public/` with a static file server still supports URL-based layers and
+local GeoJSON, but local COG uploads require `node server.mjs` (used by `pnpm dev`).
+The configured TiTiler cannot fetch `localhost`; to exercise local COG uploads in
+development, expose the app through a public tunnel and set `PUBLIC_BASE_URL` to
+that tunnel origin.
 
 Windsurf/VS Code workspace settings in `.vscode/settings.json` set the built-in
 NPM extension's package manager and script runner to `pnpm` for this repo.
@@ -82,7 +86,19 @@ starts the app with `pnpm start` (see `railway.json` and `nixpacks.toml`).
 3. Railway reads `railway.json` and starts the service.
 4. In the service settings, click **Generate Domain**.
 
-That's the whole deployment. No environment variables required.
+No environment variables are required on a normal single-instance Railway
+deployment; the upload URL is inferred from forwarded request headers. Optional
+settings:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PUBLIC_BASE_URL` | inferred | Public origin TiTiler should use to fetch uploads |
+| `UPLOAD_DIR` | `.uploads/` | Temporary raster storage directory |
+| `MAX_UPLOAD_BYTES` | `5368709120` (5 GiB) | Maximum accepted raster size |
+
+Uploads on the default Railway filesystem are ephemeral and disappear on restart
+or redeploy. Mount a Railway volume at `UPLOAD_DIR` if they must survive those
+events. Removing an uploaded layer deletes its temporary file.
 
 ---
 
@@ -120,18 +136,23 @@ integration — Railway will rebuild).
 
 ### Rebuilding built-in administrative boundaries
 
-State/county polygon assets live in `public/data/` and are generated from local
-shapefiles with GDAL/`ogr2ogr`:
+State/county polygon assets live in `public/data/` and are generated with
+GDAL/`ogr2ogr` from the Census Bureau's pre-generalized Cartographic Boundary
+Files (1:5,000,000 scale, GENZ2022), which the script downloads automatically:
 
 ```bash
 pnpm build:admin-boundaries
 pnpm test
 ```
 
-By default the script reads `/mnt/d/tl_2022_us_state/tl_2022_us_state.shp` and
-`/mnt/d/county_p010g.shp_nt00934/countyp010g.shp`. Override with
-`US_STATES_SHP=/path/to/states.shp` and `US_COUNTIES_SHP=/path/to/counties.shp`
-if needed.
+The CB files are cartographically generalized with hierarchy and alignment
+maintained, so the build applies no additional simplification. Override the
+default sources with `US_STATES_SHP` and `US_COUNTIES_SHP` (a local shapefile
+path or a URL). Use the same vintage year for states and counties — Census
+warns that areas may not align across years. See
+[notes/admin-boundary-vector-sources.md](notes/admin-boundary-vector-sources.md)
+for why the older pipeline (naive `ogr2ogr -simplify`) produced choppy
+boundaries and for the measured tradeoffs of alternative scales.
 
 ---
 
@@ -191,14 +212,16 @@ map-viewer/
 │   ├── state.js        Single source of truth + event bus
 │   ├── layer-groups-core.js Pure layer-group ordering helpers
 │   ├── layers.js       COG / GeoJSON loaders, opacity, time swapping
+│   ├── raster-upload.js Streaming local-COG upload client
 │   ├── boundary-layers.js Built-in US state/county boundary toggles
 │   ├── zonal-stats.js  Stubbed zonal tools modal + Chart.js wiring
 │   ├── timeslider.js   Time bar UI + playback engine
 │   ├── app.js          Bootstrap, sidebar, modal, base layers
 │   ├── layers.json     Built-in layer catalog (edit me!)
 │   └── data/           Generated state/county GeoJSON + index
-├── scripts/            Boundary asset build/validation scripts
-├── package.json        `serve` dependency, pnpm scripts
+├── scripts/            Validation and test scripts
+├── server.mjs          Static app + temporary raster upload/range server
+├── package.json        pnpm run scripts
 ├── railway.json        Railway start command
 ├── nixpacks.toml       Railway build config
 └── README.md           You are here
@@ -224,7 +247,7 @@ Open an issue or extend — everything is plain HTML/JS, no build step.
 
 **Git status:** On `main`, clean, fully in sync with `origin/main`. Last commit 3 weeks ago ("layer groups").
 
-**Maturity:** Mature — deployed (Railway), documented, has JS test scripts in `scripts/`, and already tracks its own gaps in the Roadmap section above.
+**Maturity:** Mature — deployed (Railway), documented, has JS test scripts in `scripts/`, and already tracks its own gaps in the Roadmap section above. The app server now also supports temporary local COG uploads for TiTiler-backed rendering.
 
 **Low-hanging fruit:**
 - No obvious low-hanging fruit beyond what's already tracked in "Roadmap / known gaps" above (no license file and no CI workflow exist, but given the small no-build-step scope that may be intentional rather than an oversight).

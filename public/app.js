@@ -18,10 +18,12 @@
 
   // ---- Base layers ----
 
+  const cartoApiKey = (window.__ENV && window.__ENV.CARTO_API_KEY) || "";
+
   const BASE_LAYERS = [
     {
       name: "Carto Dark",
-      url: "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+      url: `https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=${cartoApiKey}`,
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       maxZoom: 19,
@@ -50,7 +52,7 @@
     },
     {
       name: "Carto Voyager",
-      url: "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+      url: `https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${cartoApiKey}`,
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       maxZoom: 19,
@@ -936,17 +938,49 @@
         if (!type) throw new Error("Unsupported file type");
         const name =
           document.getElementById("file-name").value.trim() || file.name;
-        await Layers.addLayerFromConfig({
-          name,
-          type,
-          source: { kind: "file", file },
-        });
+        if (type === "cog") {
+          await addUploadedCog(name, file);
+        } else {
+          await Layers.addLayerFromConfig({
+            name,
+            type,
+            source: { kind: "file", file },
+          });
+        }
         State.toast(`Added: ${name}`, "success");
       }
       modal.classList.add("hidden");
     } catch (err) {
       console.error(err);
       State.toast(err.message || String(err), "error");
+    }
+  }
+
+  async function addUploadedCog(name, file) {
+    const confirmButton = document.getElementById("add-confirm");
+    let upload = null;
+    confirmButton.disabled = true;
+    confirmButton.textContent = "Uploading COG…";
+
+    try {
+      upload = await window.RasterUploads.upload(file);
+      confirmButton.textContent = "Checking COG…";
+      await addTiTilerLayer(name, upload.url, null, {
+        sourceDesc: `Uploaded COG: ${file.name}`,
+        uploadDeleteUrl: upload.deleteUrl,
+      });
+    } catch (error) {
+      if (upload) {
+        await window.RasterUploads.remove(upload.deleteUrl).catch(() => {});
+        throw new Error(
+          "The tiler could not open this upload. Confirm it is a georeferenced " +
+            `Cloud-Optimized GeoTIFF. ${error.message || error}`
+        );
+      }
+      throw error;
+    } finally {
+      confirmButton.disabled = false;
+      setAddConfirmLabel("file");
     }
   }
 
@@ -978,7 +1012,7 @@
     }
   }
 
-  async function addTiTilerLayer(name, cogUrl, style) {
+  async function addTiTilerLayer(name, cogUrl, style, options = {}) {
     // Fetch bounds and info from TiTiler in parallel
     const [boundsData, infoData] = await Promise.all([
       fetch(`${window.D2S.getTiTilerBase()}/cog/bounds?url=${encodeURIComponent(cogUrl)}`).then(r => {
@@ -1021,15 +1055,21 @@
 
     const tileUrl = window.D2S.buildTiTilerTileUrl(cogUrl, vizOptions);
 
-    await Layers.addD2STileLayer({
+    const layer = await Layers.addD2STileLayer({
       name,
       tileUrl,
       bounds,
       type: "raster",
-      sourceDesc: "TiTiler: " + cogUrl.split("/").pop(),
+      sourceDesc: options.sourceDesc || "TiTiler: " + cogUrl.split("/").pop(),
       cogUrl,
       vizOptions,
+      uploadDeleteUrl: options.uploadDeleteUrl || null,
     });
+    if (layer.error) {
+      Layers.removeLayer(layer);
+      throw new Error(layer.error);
+    }
+    return layer;
   }
 
   function guessName(url) {

@@ -740,6 +740,11 @@
       map.removeSource(layer.sourceId);
     }
     if (layer.timeCache) layer.timeCache.clear();
+    if (layer.uploadDeleteUrl) {
+      window.RasterUploads?.remove(layer.uploadDeleteUrl).catch((error) => {
+        console.warn("Failed to remove uploaded raster", error);
+      });
+    }
     window.ZonalEngine?.releaseLayer?.(layer.id);
     State.removeLayer(layer.id);
     State.reconcileActiveTimeLayer();
@@ -796,6 +801,7 @@
       sourceDesc: cfg.sourceDesc || "D2S TiTiler",
       cogUrl: cfg.cogUrl || null,
       vizOptions: cfg.vizOptions ? { ...cfg.vizOptions } : null,
+      uploadDeleteUrl: cfg.uploadDeleteUrl || null,
     };
 
     State.addLayer(entry);

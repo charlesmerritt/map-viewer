@@ -9,6 +9,7 @@ npm-debug.log*
 !.vscode/settings.json
 .idea/
 dist/
+.uploads/
 *.log
 notes/
 .vscode/

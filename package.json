@@ -6,14 +6,12 @@
   "packageManager": "pnpm@11.2.2",
   "scripts": {
     "preinstall": "node scripts/enforce-pnpm.mjs",
-    "start": "serve -s public -l ${PORT:-3000}",
-    "dev": "serve -s public -l 3000",
+    "start": "node server.mjs",
+    "dev": "node server.mjs",
     "build:admin-boundaries": "node scripts/build-admin-boundaries.mjs",
-    "test": "node scripts/validate-admin-boundaries.mjs && node scripts/test-layer-groups.mjs && node scripts/test-state-groups.mjs && node scripts/test-zonal-core.mjs && node scripts/test-draw-layer-order.mjs && node scripts/test-draw-click-defer.mjs"
+    "test": "node scripts/validate-admin-boundaries.mjs && node scripts/test-layer-groups.mjs && node scripts/test-state-groups.mjs && node scripts/test-zonal-core.mjs && node scripts/test-draw-layer-order.mjs && node scripts/test-draw-click-defer.mjs && node scripts/test-raster-upload-client.mjs && node scripts/test-raster-upload-server.mjs"
   },
-  "dependencies": {
-    "serve": "^14.2.4"
-  },
+  "dependencies": {},
   "engines": {
     "node": ">=18",
     "pnpm": ">=11"
