@@ -2,23 +2,15 @@
 /*
  * Build the static administrative boundary assets used by public/boundary-layers.js.
  *
- * Sources are the Census Bureau's Cartographic Boundary Files
+ * Sources are the Census Bureau's pre-generalized Cartographic Boundary Files
  * (https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html).
- * The Census zips are downloaded automatically; override with US_STATES_SHP /
- * US_COUNTIES_SHP to use a local shapefile or a different URL. Re-run this
- * script when the source vintage changes.
+ * These are cartographically simplified with hierarchy and alignment maintained,
+ * so no additional simplification is applied here. The Census zips are downloaded
+ * automatically; override with US_STATES_SHP / US_COUNTIES_SHP to use a local
+ * shapefile or a different URL. Re-run this script when the source vintage changes.
  *
  * States and counties must come from the same vintage year: Census warns that
  * geographic areas may not align across years.
- *
- * By default the CB 1:500,000 files are thinned with mapshaper's weighted
- * Visvalingam simplification (ADMIN_BOUNDARY_RETENTION, percent of removable
- * points to keep, default 40) so river borders keep their actual course while
- * the GeoJSON payload stays modest. Simplifying both layers in one mapshaper
- * run keeps shared borders vertex-aligned across states and counties; naive
- * per-polygon simplification (the old `ogr2ogr -simplify`) is what made the
- * boundaries choppy. Set ADMIN_BOUNDARY_RETENTION=100 to skip thinning — e.g.
- * when sourcing the already-generalized CB 1:5,000,000 files.
  */
 
 import { execFileSync } from "node:child_process";
@@ -35,15 +27,14 @@ import { dirname, join } from "node:path";
 
 const STATE_SOURCE =
   process.env.US_STATES_SHP ||
-  "https://www2.census.gov/geo/tiger/GENZ2022/shp/cb_2022_us_state_500k.zip";
+  "https://www2.census.gov/geo/tiger/GENZ2022/shp/cb_2022_us_state_5m.zip";
 const COUNTY_SOURCE =
   process.env.US_COUNTIES_SHP ||
-  "https://www2.census.gov/geo/tiger/GENZ2022/shp/cb_2022_us_county_500k.zip";
+  "https://www2.census.gov/geo/tiger/GENZ2022/shp/cb_2022_us_county_5m.zip";
 
 const OUT_STATES = "public/data/us-states.geojson";
 const OUT_COUNTIES = "public/data/us-counties.geojson";
 const OUT_INDEX = "public/data/us-admin-index.json";
-const RETENTION = Number(process.env.ADMIN_BOUNDARY_RETENTION || "40");
 
 async function resolveShapefile(source, workDir) {
   if (!/^https?:\/\//.test(source)) return source;
@@ -85,46 +76,6 @@ function runOgr2Ogr(outputPath, sourcePath, selectedFields) {
     ],
     { stdio: "inherit" }
   );
-}
-
-/*
- * Simplify both layers together so shared borders (state outlines vs their
- * counties, adjacent counties) keep identical vertices. Mapshaper writes one
- * GeoJSON per layer named after its input file, with ".json" appended.
- */
-function simplifyJointly(workDir, statesPath, countiesPath) {
-  const outDir = join(workDir, "simplified");
-  mkdirSync(outDir, { recursive: true });
-  execFileSync(
-    "pnpm",
-    [
-      "-y",
-      "dlx",
-      "mapshaper",
-      "-i",
-      statesPath,
-      countiesPath,
-      // combine-files imports both layers into one shared topology, so
-      // simplification decisions are identical for state outlines and the
-      // counties that border them. Without it, mapshaper processes each file
-      // with its own topology and shared borders drift apart.
-      "combine-files",
-      "-simplify",
-      "weighted",
-      `${RETENTION}%`,
-      "keep-shapes",
-      "-o",
-      "format=geojson",
-      "precision=0.00001",
-      outDir + "/",
-      "target=*",
-    ],
-    { stdio: "inherit" }
-  );
-  return {
-    states: join(outDir, "states_norm.json"),
-    counties: join(outDir, "counties_norm.json"),
-  };
 }
 
 function readJson(path) {
@@ -209,16 +160,6 @@ function normalizeCounties(rawCounties, stateAbbreviations) {
   return { type: "FeatureCollection", features };
 }
 
-function dropNullGeometry(collection, label) {
-  const kept = collection.features.filter((feature) => feature.geometry);
-  for (const feature of collection.features) {
-    if (!feature.geometry) {
-      console.warn(`Dropping ${label} with collapsed geometry: ${JSON.stringify(feature.properties)}`);
-    }
-  }
-  return { type: "FeatureCollection", features: kept };
-}
-
 function buildIndex(states, counties) {
   const countiesByState = new Map();
   for (const county of counties.features) {
@@ -250,7 +191,6 @@ function buildIndex(states, counties) {
     sources: {
       states: STATE_SOURCE,
       counties: COUNTY_SOURCE,
-      simplification: RETENTION < 100 ? `mapshaper weighted visvalingam ${RETENTION}%` : "none",
     },
     states: stateEntries,
   };
@@ -268,33 +208,11 @@ async function main() {
     runOgr2Ogr(rawStatesPath, stateShapefile, "STATEFP,STUSPS,NAME");
     runOgr2Ogr(rawCountiesPath, countyShapefile, "STATEFP,GEOID,NAME");
 
-    let states = normalizeStates(readJson(rawStatesPath));
+    const states = normalizeStates(readJson(rawStatesPath));
     const stateAbbreviations = new Map(
       states.features.map((state) => [state.properties.statefp, state.properties.stusps])
     );
-    let counties = normalizeCounties(readJson(rawCountiesPath), stateAbbreviations);
-
-    if (RETENTION < 100) {
-      const normStatesPath = join(tmp, "states_norm.geojson");
-      const normCountiesPath = join(tmp, "counties_norm.geojson");
-      writeJson(normStatesPath, states);
-      writeJson(normCountiesPath, counties);
-
-      const simplified = simplifyJointly(tmp, normStatesPath, normCountiesPath);
-      states.features = readJson(simplified.states).features;
-      counties.features = readJson(simplified.counties).features;
-
-      states.features.sort((a, b) => a.properties.name.localeCompare(b.properties.name));
-      counties.features.sort((a, b) => {
-        const stateCompare = a.properties.statefp.localeCompare(b.properties.statefp);
-        if (stateCompare !== 0) return stateCompare;
-        return a.properties.name.localeCompare(b.properties.name);
-      });
-    }
-
-    states = dropNullGeometry(states, "state");
-    counties = dropNullGeometry(counties, "county");
-
+    const counties = normalizeCounties(readJson(rawCountiesPath), stateAbbreviations);
     const index = buildIndex(states, counties);
 
     writeJson(OUT_STATES, states);
