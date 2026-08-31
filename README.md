@@ -53,8 +53,11 @@ pnpm dev
 # open http://localhost:3000
 ```
 
-Serving `public/` with a static file server still supports URL-based layers and
-local GeoJSON, but local COG uploads require `node server.mjs` (used by `pnpm dev`).
+Do not serve `public/` with a generic static server (VS Code Live Server,
+`python -m http.server`, …): `/env.js` only exists on `node server.mjs`, so the
+Carto basemaps lose their API key and render with an "API KEY REQUIRED"
+watermark. Static servers also cannot proxy local COG uploads — both require
+`node server.mjs` (used by `pnpm dev`).
 The configured TiTiler cannot fetch `localhost`; to exercise local COG uploads in
 development, expose the app through a public tunnel and set `PUBLIC_BASE_URL` to
 that tunnel origin.
