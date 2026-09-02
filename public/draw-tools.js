@@ -35,7 +35,16 @@
   // How close (in screen pixels) the cursor must be to the first vertex to
   // snap: the closing double-click drops the stray vertex, and while
   // hovering the preview line closes onto it and it lights up.
+  // A fingertip is far less precise than a cursor, so the radius grows on
+  // coarse pointers, where tapping the first vertex is also how you close.
   const SNAP_CLOSE_PIXELS = 12;
+  const SNAP_CLOSE_PIXELS_COARSE = 24;
+
+  function snapRadius() {
+    return window.matchMedia("(pointer: coarse)").matches
+      ? SNAP_CLOSE_PIXELS_COARSE
+      : SNAP_CLOSE_PIXELS;
+  }
 
   let active = false;
   let vertices = [];
@@ -45,6 +54,7 @@
   const drawnFeatures = [];
   let selectedDrawnId = null;
   let toolbarButton = null;
+  let actionBar = null;
 
   function init() {
     const map = State.getMap();
@@ -54,6 +64,7 @@
 
     document.getElementById("zonal-draw-btn")?.addEventListener("click", toggleDrawing);
     document.getElementById("zonal-clear-drawn-btn")?.addEventListener("click", clearAll);
+    initActionBar();
 
     map.on("click", onMapClick);
     map.on("mousemove", onMapMouseMove);
@@ -86,6 +97,47 @@
     return container;
   }
 
+  // Double-click and Enter are the only ways this ever offered to finish a
+  // polygon, and a phone has neither. The action bar is the touch path: it
+  // appears while drawing, counts vertices, and can undo, finish or cancel.
+  function initActionBar() {
+    actionBar = document.getElementById("draw-actions");
+    if (!actionBar) return;
+    document.getElementById("draw-finish")?.addEventListener("click", finishPolygon);
+    document.getElementById("draw-cancel")?.addEventListener("click", cancelDrawing);
+    document.getElementById("draw-undo")?.addEventListener("click", undoVertex);
+    syncActionBar();
+  }
+
+  function syncActionBar() {
+    const drawButton = document.getElementById("zonal-draw-btn");
+    drawButton?.setAttribute("aria-pressed", String(active));
+    toolbarButton?.setAttribute("aria-pressed", String(active));
+
+    if (!actionBar) return;
+    actionBar.classList.toggle("hidden", !active);
+
+    const count = vertices.length;
+    const label = document.getElementById("draw-vertex-count");
+    if (label) {
+      label.textContent =
+        count === 0
+          ? "Tap the map to start"
+          : `${count} point${count === 1 ? "" : "s"}` +
+            (count >= 3 ? " — tap the first point to close" : "");
+    }
+    const finish = document.getElementById("draw-finish");
+    if (finish) finish.disabled = count < 3;
+    const undo = document.getElementById("draw-undo");
+    if (undo) undo.disabled = count === 0;
+  }
+
+  function undoVertex() {
+    if (!active || vertices.length === 0) return;
+    vertices.pop();
+    updateActiveSource(State.getMap());
+  }
+
   function isActive() {
     return active;
   }
@@ -105,8 +157,14 @@
     snapping = false;
     map.doubleClickZoom.disable();
     map.getCanvas().style.cursor = "crosshair";
+    // On the sheet layout an expanded panel would cover the map and the draw
+    // controls, so drawing drops it to peek. Nothing is hidden, just moved.
+    if (window.SheetUI?.isSheetLayout?.()) window.SheetUI.setSnap("peek");
     toolbarButton?.classList.add("active");
-    State.toast("Click to add vertices; double-click or Enter to finish, Esc to cancel.", "info");
+    State.toast(
+      "Tap the map to add points, then Finish polygon. The first point closes it.",
+      "info"
+    );
     updateActiveSource(map);
   }
 
@@ -127,10 +185,17 @@
       map.getCanvas().style.cursor = "";
       updateActiveSource(map);
     }
+    syncActionBar();
   }
 
   function onMapClick(event) {
     if (!active) return;
+    // Tapping the first vertex closes the ring. This is the standard idiom and,
+    // on touch, the only precise closing gesture available.
+    if (vertices.length >= 3 && nearFirstVertex(event.point)) {
+      finishPolygon();
+      return;
+    }
     const point = [event.lngLat.lng, event.lngLat.lat];
     const last = vertices[vertices.length - 1];
     // A double-click delivers a second identical click first — skip it.
@@ -166,7 +231,7 @@
     const map = State.getMap();
     if (!map || vertices.length === 0) return false;
     const first = map.project(vertices[0]);
-    return Math.hypot(first.x - pixel.x, first.y - pixel.y) <= SNAP_CLOSE_PIXELS;
+    return Math.hypot(first.x - pixel.x, first.y - pixel.y) <= snapRadius();
   }
 
   function onKeyDown(event) {
@@ -358,6 +423,9 @@
   }
 
   function updateActiveSource(map) {
+    // Every vertex add / undo / cancel routes through here, so this is the one
+    // place the action bar needs to re-read the vertex count from.
+    syncActionBar();
     const source = map && map.getSource(IDS.activeSource);
     if (!source) return;
     const features = [];

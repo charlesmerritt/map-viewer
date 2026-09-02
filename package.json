@@ -9,7 +9,7 @@
     "start": "node server.mjs",
     "dev": "node server.mjs",
     "build:admin-boundaries": "node scripts/build-admin-boundaries.mjs",
-    "test": "node scripts/validate-admin-boundaries.mjs && node scripts/test-layer-groups.mjs && node scripts/test-state-groups.mjs && node scripts/test-zonal-core.mjs && node scripts/test-draw-layer-order.mjs && node scripts/test-draw-click-defer.mjs && node scripts/test-raster-upload-client.mjs && node scripts/test-raster-upload-server.mjs"
+    "test": "node scripts/validate-admin-boundaries.mjs && node scripts/test-layer-groups.mjs && node scripts/test-state-groups.mjs && node scripts/test-zonal-core.mjs && node scripts/test-draw-layer-order.mjs && node scripts/test-draw-click-defer.mjs && node scripts/test-raster-upload-client.mjs && node scripts/test-raster-upload-server.mjs && node scripts/test-responsive-contract.mjs"
   },
   "dependencies": {},
   "engines": {

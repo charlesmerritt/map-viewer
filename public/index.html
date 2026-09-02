@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <title>PERSEUS Map Viewer</title>
     <meta
       name="description"
@@ -38,6 +41,15 @@
     <script src="d2s-client.js"></script>
     <div id="app">
       <aside id="sidebar" aria-label="Layer panel">
+        <button
+          id="sheet-handle"
+          class="sheet-handle"
+          type="button"
+          aria-label="Resize layer panel"
+          aria-controls="sidebar"
+        >
+          <span class="sheet-handle-grip"></span>
+        </button>
         <header class="sidebar-header">
           <div class="brand">
             <img class="brand-mark" src="perseus-logo.png" alt="PERSEUS logo" />
@@ -46,7 +58,15 @@
               <div class="brand-sub">Map Viewer</div>
             </div>
           </div>
-          <button id="toggle-sidebar" class="icon-btn" title="Collapse panel" aria-label="Collapse panel">
+          <button
+            id="toggle-sidebar"
+            class="icon-btn"
+            type="button"
+            title="Collapse panel"
+            aria-label="Collapse panel"
+            aria-controls="sidebar"
+            aria-expanded="true"
+          >
             &laquo;
           </button>
         </header>
@@ -57,7 +77,7 @@
           
         </section>
 
-        <section class="panel">
+        <section class="panel" id="layers-panel">
           <div class="panel-head">
             <h2 class="panel-title">Layers</h2>
             <button id="add-layer-btn" class="btn-primary">+ Add layer</button>
@@ -91,7 +111,7 @@
         <section class="panel" id="zonal-panel">
           <h2 class="panel-title">Zonal tools</h2>
           <div class="zonal-draw-actions">
-            <button id="zonal-draw-btn" class="btn-ghost" title="Draw a polygon on the map (double-click or Enter to finish, Esc to cancel)">✏ Draw polygon</button>
+            <button id="zonal-draw-btn" class="btn-ghost" aria-pressed="false" title="Draw a polygon on the map, then tap Finish (or double-click / press Enter)">✏ Draw polygon</button>
             <button id="zonal-clear-drawn-btn" class="btn-ghost" title="Remove all drawn polygons">Clear drawn</button>
           </div>
           <p id="zonal-empty" class="empty-hint">
@@ -164,6 +184,22 @@
             <input id="time-loop" type="checkbox" checked /> Loop
           </label>
           <div class="time-source" id="time-source"></div>
+        </div>
+
+        <div
+          id="draw-actions"
+          class="draw-actions hidden"
+          role="group"
+          aria-label="Polygon drawing"
+        >
+          <span id="draw-vertex-count" class="draw-vertex-count" aria-live="polite"
+            >0 points</span
+          >
+          <button id="draw-undo" class="btn-ghost" type="button">Undo point</button>
+          <button id="draw-cancel" class="btn-ghost" type="button">Cancel</button>
+          <button id="draw-finish" class="btn-primary" type="button" disabled>
+            Finish polygon
+          </button>
         </div>
 
         <button id="open-sidebar" class="floating-btn hidden" aria-label="Open panel">

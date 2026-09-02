@@ -38,6 +38,11 @@ included.
 - **Time slider** — appears automatically when a visible layer declares a `times`
   array or when a layer group has its slider enabled. Play / pause / loop, four
   speeds, drag to scrub. Each native timestep is loaded lazily and cached.
+- **Works on a phone** — below 768px the layer panel becomes a draggable bottom
+  sheet over the map (peek / half / full) instead of an overlay that hides it.
+  Every feature is reachable on touch, including polygon drawing, which gets an
+  on-screen Undo / Cancel / Finish bar. See
+  [Responsive layout and accessibility](#responsive-layout-and-accessibility).
 
 ---
 
@@ -205,13 +210,60 @@ dashboards remain a future integration target.
 
 ---
 
+## Responsive layout and accessibility
+
+The viewer targets phones in the field, tablets in both orientations, small or
+split laptop windows, and large displays, with the same feature set on all of
+them. Density adapts; nothing is hidden behind "use a desktop for this".
+
+Three structural modes, keyed to what the layout can hold rather than to device
+names:
+
+| Width | Panel |
+| --- | --- |
+| `< 768px` | Draggable bottom sheet over the map: peek / half / full |
+| `>= 768px` | Resizable column beside the map, capped at `38vw` |
+| `>= 1024px` | Column at the full `--sidebar-w` (340px by default) |
+
+Viewports under 560px tall drop fixed panel heights, and input method is
+detected with `pointer` / `hover` queries rather than width, because
+touchscreen laptops and keyboard-attached tablets are both normal.
+
+The accessibility target is **WCAG 2.2 AA**: 4.5:1 text contrast and 3:1 on
+control edges, a 24px minimum target size (44px on coarse pointers), a visible
+focus ring on everything, Escape and a focus trap on both modals, no
+hover-only functionality, `prefers-reduced-motion` honoured, and reflow to
+320px without horizontal scrolling. `env(safe-area-inset-*)` and `dvh` keep
+controls clear of notches and mobile browser chrome.
+
+Two verification layers:
+
+```bash
+# Dependency-free. Guards the seams between styles.css, app.js and index.html:
+# the phone breakpoint is written in two files and must agree, shared custom
+# properties must exist on both sides, and app-level z-index must use the
+# semantic --z-* scale. Runs as part of `pnpm test`.
+pnpm test
+
+# Real browser. Eight viewports from 320x653 to 2560x1080, empty and populated:
+# horizontal overflow, sub-24px targets, unreachable controls, text contrast
+# against composited backgrounds, 320px reflow at 4x root font, 200% zoom,
+# reduced motion, and overlap between the sheet, time bar, drawing controls and
+# map attribution. Not in `pnpm test`: it needs a browser, and this project has
+# no runtime dependencies.
+node server.mjs &
+pnpm dlx --package=puppeteer-core -- node scripts/check-responsive-browser.mjs
+```
+
+---
+
 ## File layout
 
 ```
 map-viewer/
 ├── public/
 │   ├── index.html      Layout + CDN scripts
-│   ├── styles.css      UI (dark map-app aesthetic)
+│   ├── styles.css      UI, design tokens, and the three responsive modes
 │   ├── state.js        Single source of truth + event bus
 │   ├── layer-groups-core.js Pure layer-group ordering helpers
 │   ├── layers.js       COG / GeoJSON loaders, opacity, time swapping
@@ -223,6 +275,8 @@ map-viewer/
 │   ├── layers.json     Built-in layer catalog (edit me!)
 │   └── data/           Generated state/county GeoJSON + index
 ├── scripts/            Validation and test scripts
+│   ├── test-responsive-contract.mjs  Layout/a11y contract, part of `pnpm test`
+│   └── check-responsive-browser.mjs  Browser checks, run by hand
 ├── server.mjs          Static app + temporary raster upload/range server
 ├── package.json        pnpm run scripts
 ├── railway.json        Railway start command

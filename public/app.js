@@ -295,6 +295,9 @@
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = !!layer.visible;
+    // The label wraps the box but has no text, so the control needs its own
+    // name or a screen reader announces a bare "checkbox".
+    cb.setAttribute("aria-label", `Show ${layer.name} on the map`);
     cb.addEventListener("change", () =>
       Layers.setLayerVisible(layer, cb.checked)
     );
@@ -598,13 +601,29 @@
   function positionKeyboardHelpPanel(button, panel) {
     const buttonRect = button.getBoundingClientRect();
     const panelWidth = panel.offsetWidth || 270;
+    const panelHeight = panel.offsetHeight || 180;
     const gap = 8;
-    const left = Math.min(
-      buttonRect.right + gap,
-      window.innerWidth - panelWidth - gap
+
+    // Prefer the right of the button; flip to its left when the panel would
+    // run off a narrow viewport rather than being clipped there.
+    let left = buttonRect.right + gap;
+    if (left + panelWidth + gap > window.innerWidth) {
+      left = buttonRect.left - panelWidth - gap;
+    }
+    left = Math.max(gap, Math.min(left, window.innerWidth - panelWidth - gap));
+
+    // The panel is centred on the button vertically, so clamp against half its
+    // height at both ends; otherwise it hangs off the top of a short viewport.
+    const half = panelHeight / 2;
+    const top = Math.max(
+      gap + half,
+      Math.min(
+        buttonRect.top + buttonRect.height / 2,
+        window.innerHeight - gap - half
+      )
     );
-    const top = buttonRect.top + buttonRect.height / 2;
-    panel.style.left = `${Math.max(gap, left)}px`;
+
+    panel.style.left = `${left}px`;
     panel.style.top = `${top}px`;
   }
 
@@ -1171,20 +1190,208 @@
   const SIDEBAR_MIN_WIDTH = 320;
   const SIDEBAR_MAX_WIDTH = 620;
 
+  // Below this width the panel is a bottom sheet over the map rather than a
+  // column beside it. Kept in sync with the same breakpoint in styles.css.
+  const PHONE_QUERY = "(max-width: 767.98px)";
+  const phoneMedia = window.matchMedia(PHONE_QUERY);
+
   function initSidebarToggle() {
     const sidebar = document.getElementById("sidebar");
     const collapseBtn = document.getElementById("toggle-sidebar");
     const openBtn = document.getElementById("open-sidebar");
+
     collapseBtn.addEventListener("click", () => {
+      // On a phone the panel never leaves the screen; it drops to its peek
+      // snap, which keeps it reachable without a second floating control.
+      if (phoneMedia.matches) {
+        Sheet.setSnap(Sheet.currentSnap() === "peek" ? "half" : "peek");
+        return;
+      }
       sidebar.classList.add("collapsed");
+      collapseBtn.setAttribute("aria-expanded", "false");
       openBtn.classList.remove("hidden");
-      setTimeout(() => State.getMap().resize(), 220);
+      openBtn.focus();
+      setTimeout(() => State.getMap()?.resize(), 220);
     });
+
     openBtn.addEventListener("click", () => {
       sidebar.classList.remove("collapsed");
+      collapseBtn.setAttribute("aria-expanded", "true");
       openBtn.classList.add("hidden");
-      setTimeout(() => State.getMap().resize(), 220);
+      collapseBtn.focus();
+      setTimeout(() => State.getMap()?.resize(), 220);
     });
+  }
+
+  // ---- Bottom sheet (phone layout) ----
+
+  // The sheet moves by writing --sheet-y, an offset in px from the fully-open
+  // position. Transform only, so dragging never triggers layout.
+  const Sheet = (() => {
+    const SNAP_ORDER = ["peek", "half", "full"];
+    let snap = "half";
+    let drag = null;
+    let sidebar = null;
+    // A pointerup at the end of a drag is still followed by a click, which
+    // would then cycle the snap a second time and undo the drag.
+    let suppressClick = false;
+
+    const peekPx = () =>
+      Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--sheet-peek")
+      ) || 60;
+
+    const travel = () => Math.max(0, sidebar.offsetHeight - peekPx());
+
+    function offsetFor(name) {
+      if (name === "full") return 0;
+      if (name === "peek") return travel();
+      return Math.min(travel(), Math.round(sidebar.offsetHeight * 0.5));
+    }
+
+    function currentOffset() {
+      const raw = sidebar.style.getPropertyValue("--sheet-y");
+      const parsed = Number.parseFloat(raw);
+      return Number.isFinite(parsed) ? parsed : offsetFor(snap);
+    }
+
+    function setSnap(name, { animate = true } = {}) {
+      if (!sidebar || !SNAP_ORDER.includes(name)) return;
+      snap = name;
+      sidebar.dataset.snap = name;
+      if (!animate) sidebar.classList.add("sheet-dragging");
+      const offset = offsetFor(name);
+      sidebar.style.setProperty("--sheet-y", `${offset}px`);
+      // Scrollable slack matching the hidden overhang. Set here rather than in
+      // the drag loop: padding is layout, --sheet-y alone is not.
+      sidebar.style.setProperty("--sheet-pad", `${offset}px`);
+      if (!animate) {
+        requestAnimationFrame(() => sidebar.classList.remove("sheet-dragging"));
+      }
+      const collapseBtn = document.getElementById("toggle-sidebar");
+      collapseBtn?.setAttribute("aria-expanded", String(name !== "peek"));
+      collapseBtn?.setAttribute(
+        "aria-label",
+        name === "peek" ? "Expand layer panel" : "Collapse layer panel"
+      );
+    }
+
+    function nearestSnap(offset) {
+      return SNAP_ORDER.reduce((best, name) =>
+        Math.abs(offsetFor(name) - offset) < Math.abs(offsetFor(best) - offset)
+          ? name
+          : best
+      );
+    }
+
+    function step(direction) {
+      const index = SNAP_ORDER.indexOf(snap);
+      const next = Math.min(SNAP_ORDER.length - 1, Math.max(0, index + direction));
+      setSnap(SNAP_ORDER[next]);
+    }
+
+    function beginDrag(event) {
+      if (!phoneMedia.matches) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      drag = {
+        id: event.pointerId,
+        startY: event.clientY,
+        startOffset: currentOffset(),
+        moved: false,
+      };
+      sidebar.classList.add("sheet-dragging");
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    function moveDrag(event) {
+      if (!drag || event.pointerId !== drag.id) return;
+      event.preventDefault();
+      if (Math.abs(event.clientY - drag.startY) > 4) drag.moved = true;
+      const next = Math.min(
+        travel(),
+        Math.max(0, drag.startOffset + (event.clientY - drag.startY))
+      );
+      sidebar.style.setProperty("--sheet-y", `${next}px`);
+    }
+
+    function endDrag(event) {
+      if (!drag || event.pointerId !== drag.id) return;
+      const settled = nearestSnap(currentOffset());
+      suppressClick = drag.moved;
+      drag = null;
+      sidebar.classList.remove("sheet-dragging");
+      setSnap(settled);
+    }
+
+    function attachDrag(element, { ignoreControls = false } = {}) {
+      if (!element) return;
+      element.addEventListener("pointerdown", (event) => {
+        if (ignoreControls && event.target.closest("button, a, input, select, label")) {
+          return;
+        }
+        beginDrag(event);
+      });
+      element.addEventListener("pointermove", moveDrag);
+      element.addEventListener("pointerup", endDrag);
+      element.addEventListener("pointercancel", endDrag);
+    }
+
+    function init() {
+      sidebar = document.getElementById("sidebar");
+      if (!sidebar) return;
+      const handle = document.getElementById("sheet-handle");
+
+      attachDrag(handle);
+      attachDrag(document.querySelector(".sidebar-header"), { ignoreControls: true });
+
+      // Keyboard equivalent for the drag gesture.
+      handle?.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          step(1);
+        } else if (event.key === "ArrowDown") {
+          event.preventDefault();
+          step(-1);
+        }
+      });
+      handle?.addEventListener("click", () => {
+        if (suppressClick) {
+          suppressClick = false;
+          return;
+        }
+        setSnap(snap === "full" ? "peek" : snap === "peek" ? "half" : "full");
+      });
+
+      // The map's usable area changes with the sheet, so it has to re-measure.
+      sidebar.addEventListener("transitionend", (event) => {
+        if (event.propertyName === "transform") State.getMap()?.resize();
+      });
+
+      const sync = () => {
+        if (phoneMedia.matches) setSnap(snap, { animate: false });
+        else {
+          sidebar.style.removeProperty("--sheet-y");
+          sidebar.style.removeProperty("--sheet-pad");
+        }
+        State.getMap()?.resize();
+      };
+      phoneMedia.addEventListener("change", sync);
+      window.addEventListener("orientationchange", () => setTimeout(sync, 120));
+      window.addEventListener("resize", debounce(sync, 150));
+      sync();
+    }
+
+    return { init, setSnap, currentSnap: () => snap, isSheetLayout: () => phoneMedia.matches };
+  })();
+
+  window.SheetUI = Sheet;
+
+  function debounce(fn, wait) {
+    let timer = null;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), wait);
+    };
   }
 
   function initSidebarResizer() {
@@ -1192,12 +1399,12 @@
     const resizer = document.getElementById("sidebar-resizer");
     if (!sidebar || !resizer) return;
 
-    const savedWidth = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
-    if (window.innerWidth > 720 && Number.isFinite(savedWidth)) setSidebarWidth(savedWidth);
+    const savedWidth = Number.parseFloat(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+    if (!phoneMedia.matches && savedWidth > 0) setSidebarWidth(savedWidth);
 
     resizer.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
-      if (window.innerWidth <= 720) return;
+      if (phoneMedia.matches) return;
       sidebar.classList.add("resizing");
       resizer.setPointerCapture(e.pointerId);
       e.preventDefault();
@@ -1237,6 +1444,98 @@
     return Number.parseFloat(raw) || SIDEBAR_MIN_WIDTH;
   }
 
+  // ---- Bottom-anchored map chrome ----
+
+  // The time bar wraps to two or three rows on a phone, so anything stacked
+  // above it needs its real height, not a guess.
+  function initTimeBarMetrics() {
+    const bar = document.getElementById("time-bar");
+    if (!bar) return;
+    const write = () => {
+      const visible = !bar.classList.contains("hidden");
+      document.documentElement.style.setProperty(
+        "--time-bar-h",
+        visible ? `${Math.round(bar.offsetHeight) + 12}px` : "0px"
+      );
+    };
+    new ResizeObserver(write).observe(bar);
+    new MutationObserver(write).observe(bar, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    write();
+  }
+
+  // ---- Modal keyboard + focus behaviour ----
+
+  // Both modals are plain divs toggled with .hidden, so neither closed on Escape
+  // nor kept focus inside itself. This wires that centrally: closing routes
+  // through each modal's own close button so their existing teardown still runs.
+  const FOCUSABLE =
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
+
+  function initModalA11y() {
+    const modals = Array.from(document.querySelectorAll(".modal"));
+    if (!modals.length) return;
+    let lastFocused = null;
+
+    const openModal = () =>
+      modals.filter((m) => !m.classList.contains("hidden")).pop() || null;
+
+    const closeButton = (modal) =>
+      modal.querySelector("[data-close-modal], [data-close-zonal-modal]");
+
+    // Watch the class attribute rather than patching every open/close call site.
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        const modal = record.target;
+        const hidden = modal.classList.contains("hidden");
+        if (!hidden && modal.dataset.open !== "true") {
+          modal.dataset.open = "true";
+          lastFocused = document.activeElement;
+          const first = modal.querySelector(FOCUSABLE);
+          // Defer so the modal's own render finishes before focus moves.
+          requestAnimationFrame(() => first?.focus());
+        } else if (hidden && modal.dataset.open === "true") {
+          delete modal.dataset.open;
+          if (lastFocused instanceof HTMLElement && lastFocused.isConnected) {
+            lastFocused.focus();
+          }
+          lastFocused = null;
+        }
+      }
+    });
+    modals.forEach((modal) =>
+      observer.observe(modal, { attributes: true, attributeFilter: ["class"] })
+    );
+
+    document.addEventListener("keydown", (event) => {
+      const modal = openModal();
+      if (!modal) return;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeButton(modal)?.click();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const focusable = Array.from(modal.querySelectorAll(FOCUSABLE)).filter(
+        (el) => el.offsetParent !== null || el === document.activeElement
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+  }
+
   // ---- Toast ----
 
   let toastTimer = null;
@@ -1259,6 +1558,9 @@
     initAddModal();
     initSidebarToggle();
     initSidebarResizer();
+    Sheet.init();
+    initModalA11y();
+    initTimeBarMetrics();
     initToast();
     initLayerToolbar();
     if (window.DrawTools) window.DrawTools.init();

@@ -35,6 +35,11 @@
   --tap: 24px;
   --focus-ring: 2px;
 
+  /* MapLibre's attribution pill is bottom-anchored and is a licence
+     requirement, so bottom-anchored app chrome stacks above it rather than
+     across it. */
+  --attrib-h: 28px;
+
   /* Safe areas, resolved once so every edge-anchored element can use them. */
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
@@ -44,7 +49,6 @@
   /* Semantic stacking order. Nothing in this file may invent a raw z-index. */
   --z-map-ctrl: 400;
   --z-sheet: 1200;
-  --z-sheet-scrim: 1150;
   --z-popover: 1600;
   --z-modal-scrim: 2000;
   --z-modal: 2010;
@@ -59,6 +63,19 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* One focus treatment for the whole app. Offset keeps the ring clear of the
+   element's own border, and the outline (not a box-shadow) survives being
+   painted inside scroll containers. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: var(--focus-ring) solid var(--accent-2);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+/* Never remove the ring; the app draws its own where the default would clip. */
+:focus-visible {
+  outline-color: var(--accent-2);
 }
 
 html,
@@ -83,8 +100,11 @@ a:hover {
 
 #app {
   display: flex;
+  /* 100vh on mobile is the *largest* viewport, so the bottom of the app sits
+     under the browser chrome until you scroll. dvh tracks the real box. */
   height: 100vh;
-  width: 100vw;
+  height: 100dvh;
+  width: 100%;
   overflow: hidden;
 }
 
@@ -140,7 +160,7 @@ a:hover {
   border-bottom: 1px solid var(--border);
   overflow-y: auto;
 }
-.panel:nth-child(3) {
+#layers-panel {
   flex: 1;
   min-height: 0;
 }
@@ -161,8 +181,29 @@ a:hover {
   color: #333;
 }
 .draw-ctrl-btn.active {
-  background: #c084fc;
-  color: #1c2230;
+  background: #6b21a8;
+  color: #ffffff;
+}
+
+/* MapLibre ships 29px control buttons. That is under the AA target floor and
+   well under a usable field target, so every control in the group grows. */
+.maplibregl-ctrl-group button {
+  width: max(29px, var(--tap));
+  height: max(29px, var(--tap));
+}
+.maplibregl-ctrl-group button:focus-visible {
+  outline: var(--focus-ring) solid var(--accent-2);
+  outline-offset: 2px;
+}
+.maplibregl-ctrl-top-right {
+  top: var(--safe-t);
+  right: var(--safe-r);
+}
+.maplibregl-ctrl-bottom-right {
+  right: var(--safe-r);
+}
+.maplibregl-ctrl-bottom-left {
+  left: var(--safe-l);
 }
 
 .panel-title {
@@ -181,10 +222,18 @@ a:hover {
 }
 
 .sidebar-footer {
-  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  padding: 4px 16px calc(4px + var(--safe-b));
   border-top: 1px solid var(--border);
   font-size: 12px;
   color: var(--text-dim);
+}
+.sidebar-footer a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0 2px;
 }
 .sidebar-footer .dot {
   margin: 0 6px;
@@ -194,8 +243,8 @@ a:hover {
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 10;
-  width: 8px;
+  z-index: var(--z-map-ctrl);
+  width: 24px;
   cursor: col-resize;
   touch-action: none;
 }
@@ -204,11 +253,18 @@ a:hover {
   position: absolute;
   top: 10px;
   bottom: 10px;
-  left: 3px;
+  right: 3px;
   width: 2px;
   border-radius: 999px;
   background: transparent;
   transition: background 0.15s ease;
+}
+/* Dragging a 2px splitter is a fine-pointer act. Touch layouts resize the
+   panel through the sheet instead, so the strip does not steal map gestures. */
+@media (pointer: coarse) {
+  .sidebar-resizer {
+    display: none;
+  }
 }
 .sidebar-resizer:hover::after,
 .sidebar-resizer:focus-visible::after,
@@ -217,6 +273,94 @@ a:hover {
 }
 #sidebar.resizing {
   transition: none;
+}
+
+/* ---------- Bottom-sheet handle (phone only) ---------- */
+
+.sheet-handle {
+  display: none;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  /* A flex item in a column shrinks under content pressure; the grab handle
+     must not, or it collapses to the height of the grip line. */
+  flex: 0 0 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+.sheet-handle:active {
+  cursor: grabbing;
+}
+.sheet-handle-grip {
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  transition: background-color 0.15s ease;
+}
+.sheet-handle:hover .sheet-handle-grip,
+.sheet-handle:focus-visible .sheet-handle-grip {
+  background: var(--accent-2);
+}
+
+/* ---------- Drawing action bar ---------- */
+
+/* Finishing a polygon was double-click or Enter, neither of which exists on a
+   phone. These controls are the touch path, and they double as the discoverable
+   path on desktop. */
+.draw-actions {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(12px + var(--safe-t));
+  z-index: var(--z-map-ctrl);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.draw-vertex-count {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+  /* Bottom of the screen, above the peeking sheet: this is the one control
+     cluster you use continuously while drawing, so it goes in thumb reach. */
+  /* Thumb reach, stacked above whatever else is anchored to the bottom:
+     the peeking sheet, and the time bar when a time-series layer is loaded.
+     --time-bar-h is written by app.js and is 0px while the bar is hidden. */
+  .draw-actions {
+    top: auto;
+    bottom: calc(
+      var(--map-chrome-base) + var(--attrib-h) + var(--time-bar-h, 0px) + 12px
+    );
+    left: calc(12px + var(--safe-l));
+    right: calc(12px + var(--safe-r));
+    transform: none;
+    max-width: none;
+  }
+  .draw-actions .btn-primary,
+  .draw-actions .btn-ghost {
+    flex: 1 1 auto;
+  }
+  .draw-vertex-count {
+    flex: 1 0 100%;
+    text-align: center;
+  }
 }
 
 /* ---------- Inputs ---------- */
@@ -228,44 +372,80 @@ input[type="number"],
 input[type="file"],
 select {
   width: 100%;
+  min-height: var(--tap);
   background: var(--panel-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   color: var(--text);
   border-radius: var(--radius-sm);
   padding: 6px 8px;
   font: inherit;
 }
-input:focus,
-select:focus {
-  outline: 2px solid var(--accent-2);
-  outline-offset: 0;
+input[type="range"],
+input[type="checkbox"] {
+  accent-color: var(--accent-2);
+}
+/* Placeholders are held to body contrast, not the browser's washed-out grey. */
+::placeholder {
+  color: var(--text-dim);
+  opacity: 1;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: var(--focus-ring) solid var(--accent-2);
+  outline-offset: 1px;
 }
 
 .btn-primary {
   background: var(--accent);
-  color: white;
+  color: #ffffff;
   border: none;
   border-radius: var(--radius-sm);
   padding: 6px 12px;
+  min-height: var(--tap);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
+/* Hover darkens rather than lightens: white-on-green only clears 4.5:1 at the
+   dark end of this ramp. The inset ring carries the control's edge contrast so
+   the darker fill never drops below 3:1 against the panel behind it. */
 .btn-primary:hover {
-  background: var(--accent-2);
+  background: var(--accent-hover);
+  box-shadow: inset 0 0 0 1px var(--accent-2);
+}
+.btn-primary:active {
+  background: var(--accent-active);
+}
+.btn-primary:disabled {
+  background: var(--panel-2);
+  color: var(--text-dim);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  cursor: not-allowed;
 }
 
 .btn-ghost {
   background: transparent;
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 6px 12px;
+  min-height: var(--tap);
   font: inherit;
   cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .btn-ghost:hover {
   background: var(--panel-2);
+  border-color: var(--accent-2);
+}
+.btn-ghost:active {
+  background: var(--panel);
+}
+.btn-ghost[aria-pressed="true"] {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
 }
 
 .icon-btn {
@@ -274,11 +454,20 @@ select:focus {
   border: none;
   cursor: pointer;
   padding: 4px 8px;
+  /* Icon buttons carry no label, so the box itself has to be the target. */
+  min-width: var(--tap);
+  min-height: var(--tap);
+  display: inline-grid;
+  place-items: center;
   border-radius: var(--radius-sm);
   font-size: 16px;
+  line-height: 1;
 }
 .icon-btn:hover {
   background: var(--panel-2);
+}
+.icon-btn:active {
+  background: var(--border);
 }
 
 /* ---------- Layer list ---------- */
@@ -299,6 +488,7 @@ select:focus {
 .layer-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   margin: 0 0 8px 0;
   padding: 6px;
@@ -310,6 +500,7 @@ select:focus {
 .layer-tool-btn {
   padding: 4px 8px;
   font-size: 12px;
+  min-height: var(--tap);
 }
 .layer-toolbar .btn-ghost:disabled,
 .layer-tool-btn:disabled {
@@ -321,12 +512,13 @@ select:focus {
   display: inline-flex;
 }
 .keyboard-help-btn {
-  width: 24px;
-  height: 24px;
+  width: var(--tap);
+  height: var(--tap);
+  min-width: var(--tap);
   padding: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 50%;
-  color: var(--text-dim);
+  color: var(--text);
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
@@ -335,8 +527,10 @@ select:focus {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 3500;
-  width: 270px;
+  z-index: var(--z-popover);
+  width: min(270px, calc(100vw - 2 * var(--tap)));
+  max-height: 70dvh;
+  overflow-y: auto;
   padding: 10px 12px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -350,7 +544,16 @@ select:focus {
   transform: translate(4px, -50%);
   transition: opacity 0.15s ease, transform 0.15s ease;
 }
-.keyboard-help:hover .keyboard-help-panel,
+/* Hover only opens this where hover actually exists; touch uses the click
+   toggle, which sets .open. Without the guard, a tap fires a synthetic hover
+   and the panel sticks open with no way to dismiss it. */
+@media (hover: hover) {
+  .keyboard-help:hover .keyboard-help-panel {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(0, -50%);
+  }
+}
 .keyboard-help:focus-within .keyboard-help-panel,
 .keyboard-help.open .keyboard-help-panel {
   opacity: 1;
@@ -400,10 +603,12 @@ kbd {
   padding: 7px;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
-.layer-group:hover {
-  background: rgba(30, 36, 48, 0.52);
-  border-color: #394354;
-  cursor: pointer;
+@media (hover: hover) {
+  .layer-group:hover {
+    background: rgba(30, 36, 48, 0.52);
+    border-color: #394354;
+    cursor: pointer;
+  }
 }
 .layer-group.active-time-group {
   border-color: rgba(106, 176, 72, 0.75);
@@ -430,19 +635,26 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Revealed on hover only where hovering is possible. On touch there is no
+   hover, so a hidden rename button is simply a missing feature; it stays on. */
 .layer-group-rename {
-  opacity: 0;
-  width: 22px;
-  min-width: 22px;
-  height: 22px;
+  opacity: 1;
+  width: var(--tap);
+  min-width: var(--tap);
+  height: var(--tap);
   padding: 0;
   font-size: 12px;
   transition: opacity 0.15s ease, background-color 0.15s ease;
 }
-.layer-group:hover .layer-group-rename,
-.layer-group:focus-within .layer-group-rename,
-.layer-group-rename:focus-visible {
-  opacity: 1;
+@media (hover: hover) and (pointer: fine) {
+  .layer-group-rename {
+    opacity: 0;
+  }
+  .layer-group:hover .layer-group-rename,
+  .layer-group:focus-within .layer-group-rename,
+  .layer-group-rename:focus-visible {
+    opacity: 1;
+  }
 }
 .layer-group-count {
   font-size: 11px;
@@ -501,10 +713,12 @@ kbd {
   gap: 6px;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
-.layer-card:hover {
-  background: #252c39;
-  border-color: #394354;
-  cursor: pointer;
+@media (hover: hover) {
+  .layer-card:hover {
+    background: #252c39;
+    border-color: #394354;
+    cursor: pointer;
+  }
 }
 .layer-card.selected {
   border-color: var(--accent-2);
@@ -519,6 +733,12 @@ kbd {
   user-select: none;
   line-height: 1;
   padding: 2px 1px;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  display: inline-grid;
+  place-items: center;
+  /* The handle owns the drag gesture; the sheet must not steal it. */
+  touch-action: none;
 }
 .layer-drag-handle:active {
   cursor: grabbing;
@@ -556,10 +776,22 @@ kbd {
 .layer-toggle {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: var(--tap);
+  min-height: var(--tap);
   cursor: pointer;
 }
 .layer-toggle input {
-  width: auto;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+}
+.layer-toggle:has(input:focus-visible) {
+  outline: var(--focus-ring) solid var(--accent-2);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
 }
 .layer-opacity {
   display: flex;
@@ -568,7 +800,53 @@ kbd {
 }
 .layer-opacity input[type="range"] {
   flex: 1;
-  accent-color: var(--accent-2);
+  min-width: 0;
+}
+/* Range inputs get a full-height hit area and an oversized thumb on touch;
+   the native control is otherwise about a 10px target. */
+input[type="range"] {
+  height: var(--tap);
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  border: 2px solid var(--panel);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  border: 2px solid var(--panel);
+}
+@media (pointer: coarse) {
+  input[type="range"]::-webkit-slider-thumb {
+    width: 26px;
+    height: 26px;
+    margin-top: -11px;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 26px;
+    height: 26px;
+  }
 }
 .layer-opacity .opacity-val {
   font-variant-numeric: tabular-nums;
@@ -602,17 +880,18 @@ kbd {
 
 .layer-colormap-select {
   flex: 1;
+  min-height: var(--tap);
   background: var(--panel);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 3px 6px;
   font-size: 12px;
   cursor: pointer;
 }
-.layer-colormap-select:focus {
-  outline: none;
-  border-color: var(--accent);
+.layer-colormap-select:focus-visible {
+  outline: var(--focus-ring) solid var(--accent-2);
+  outline-offset: 1px;
 }
 
 .layer-color-ramp {
@@ -679,13 +958,13 @@ kbd {
 .layer-error {
   font-size: 12px;
   color: var(--danger);
-  word-break: break-word;
+  overflow-wrap: anywhere;
   white-space: normal;
   line-height: 1.45;
   padding: 6px 8px;
-  background: rgba(239, 68, 68, 0.08);
+  background: rgba(239, 68, 68, 0.1);
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  border: 1px solid rgba(244, 123, 123, 0.45);
 }
 
 .builtin-item {
@@ -744,11 +1023,15 @@ kbd {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: var(--tap);
   font-size: 13px;
   cursor: pointer;
 }
 .admin-toggle input {
-  width: auto;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  flex: 0 0 auto;
   accent-color: var(--accent-2);
 }
 .admin-toggle input:disabled + span {
@@ -812,7 +1095,7 @@ kbd {
   padding-inline: 8px;
 }
 .modal-card.zonal-modal-card {
-  width: min(760px, calc(100% - 24px));
+  width: min(760px, 100%);
 }
 .zonal-modal-zone {
   background: var(--panel-2);
@@ -824,14 +1107,16 @@ kbd {
 .zonal-run-actions {
   align-items: center;
 }
+/* Two columns when there is room for two, one when there is not. No
+   breakpoint: the modal is resizable and can be any width. */
 .zonal-results {
   display: grid;
-  grid-template-columns: minmax(260px, 0.8fr) minmax(260px, 1.2fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 14px;
-  min-height: 260px;
 }
 .zonal-table-wrap {
-  overflow: auto;
+  overflow-x: auto;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
@@ -856,8 +1141,12 @@ kbd {
 .zonal-table td:last-child {
   font-variant-numeric: tabular-nums;
 }
+.zonal-chart-wrap canvas {
+  max-width: 100%;
+}
 .zonal-chart-wrap {
-  min-height: 260px;
+  min-height: 240px;
+  min-width: 0;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -884,12 +1173,14 @@ kbd {
 
 .floating-btn {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 1000;
+  top: calc(12px + var(--safe-t));
+  left: calc(12px + var(--safe-l));
+  z-index: var(--z-map-ctrl);
+  min-width: var(--tap);
+  min-height: var(--tap);
   background: var(--panel);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 6px 10px;
   cursor: pointer;
@@ -900,24 +1191,26 @@ kbd {
 
 .time-bar {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  z-index: 1000;
+  left: calc(12px + var(--safe-l));
+  right: calc(12px + var(--safe-r));
+  bottom: calc(12px + var(--attrib-h) + var(--safe-b));
+  z-index: var(--z-map-ctrl);
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 10px 14px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   color: var(--text);
 }
 .time-play {
   font-size: 18px;
-  width: 36px;
-  height: 36px;
+  width: max(36px, var(--tap));
+  height: max(36px, var(--tap));
+  flex: 0 0 auto;
   background: var(--panel-2);
   border-radius: 50%;
   display: grid;
@@ -927,7 +1220,7 @@ kbd {
   background: var(--accent);
 }
 .time-track {
-  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -951,8 +1244,15 @@ kbd {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-height: var(--tap);
   font-size: 12px;
   color: var(--text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.time-loop input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
 }
 .time-speed select {
   width: auto;
@@ -968,6 +1268,12 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.time-labels span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* ---------- Modal ---------- */
 
@@ -977,11 +1283,15 @@ kbd {
   background: rgba(0, 0, 0, 0.55);
   display: grid;
   place-items: center;
-  z-index: 2000;
+  z-index: var(--z-modal-scrim);
+  padding: calc(12px + var(--safe-t)) calc(12px + var(--safe-r))
+    calc(12px + var(--safe-b)) calc(12px + var(--safe-l));
 }
 .modal-card {
-  width: min(520px, calc(100% - 24px));
-  max-height: min(780px, calc(100vh - 24px));
+  position: relative;
+  z-index: var(--z-modal);
+  width: min(520px, 100%);
+  max-height: 100%;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -990,11 +1300,19 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .modal-head {
+  position: sticky;
+  top: -18px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  padding: 18px 0 10px;
+  margin: -18px 0 0;
+  background: var(--panel);
 }
 .modal-head h3 {
   margin: 0;
@@ -1003,8 +1321,15 @@ kbd {
   display: flex;
   gap: 4px;
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 .tab {
+  flex: 0 0 auto;
+  min-height: var(--tap);
   padding: 6px 12px;
   background: transparent;
   color: var(--text-dim);
@@ -1069,7 +1394,7 @@ kbd {
 
 .toast {
   position: fixed;
-  bottom: 20px;
+  bottom: calc(20px + var(--safe-b));
   left: 50%;
   transform: translateX(-50%);
   background: var(--panel);
@@ -1078,11 +1403,11 @@ kbd {
   border-radius: var(--radius);
   padding: 10px 16px;
   box-shadow: var(--shadow);
-  z-index: 3000;
-  max-width: 80vw;
+  z-index: var(--z-toast);
+  max-width: min(80vw, 480px);
 }
 .toast.error {
-  border-color: var(--danger);
+  border-color: var(--danger-edge);
 }
 .toast.success {
   border-color: var(--accent-2);
@@ -1107,20 +1432,405 @@ kbd {
   border-bottom-color: var(--border) !important;
 }
 
-@media (max-width: 720px) {
+/* ================================================================
+   Adaptive layout
+
+   Three structural modes, keyed to what the layout can actually hold
+   rather than to device names:
+
+     < 768px   phone  — the panel becomes a draggable bottom sheet over
+                        the map, because every control in it has a map
+                        consequence you need to see while you use it.
+     >= 768px  side   — the panel is a resizable column beside the map.
+     short     any viewport under 560px tall (landscape phone, a split
+                        laptop window) drops fixed panel heights.
+
+   Input method is handled separately, by pointer/hover queries, because
+   a touchscreen laptop and a keyboard-attached tablet both exist.
+   ================================================================ */
+
+/* ---------- Phone: panel as a bottom sheet ---------- */
+
+@media (max-width: 767.98px) {
   :root {
-    --sidebar-w: 100vw;
+    /* How much of the sheet stays on screen at its lowest snap: the grab
+       handle plus the whole header row. JS reads this. */
+    --sheet-peek: 80px;
+    /* MapLibre's compact attribution pill. Bottom-anchored map chrome stacks
+       upward from the sheet: attribution, then the time bar, then the drawing
+       controls, so nothing covers the licence text. */
+    --map-chrome-base: calc(var(--sheet-peek) + var(--safe-b));
   }
-  #sidebar {
+
+  #app {
+    display: block;
+    position: relative;
+  }
+
+  #map-region {
     position: absolute;
-    z-index: 1500;
-    height: 100%;
-    box-shadow: var(--shadow);
+    inset: 0;
   }
+
+  #sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: 100%;
+    height: 88dvh;
+    z-index: var(--z-sheet);
+    border-right: none;
+    border-top: 1px solid var(--border-strong);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+    /* The sheet is taller than the part of it you can see at any snap below
+       "full". --sheet-pad adds exactly the hidden overhang back as scrollable
+       slack, so the last control can always be scrolled into view. It is
+       written on snap, not on every drag frame, to keep the drag layout-free. */
+    padding-bottom: calc(var(--sheet-pad, 0px) + var(--safe-b));
+    /* --sheet-y is the sheet's offset from its fully-open position, in px,
+       written by app.js as you drag. Transform only: no layout on the
+       animation frame. */
+    transform: translate3d(0, var(--sheet-y, calc(88dvh - 80px)), 0);
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    /* The sheet body is one scroll container on a phone, so a half-open sheet
+       still reaches everything below the fold. Vertical drags scroll it;
+       the handle and header opt out of that to move the sheet instead. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+  #sidebar.sheet-dragging {
+    transition: none;
+  }
+  /* Desktop collapse has no meaning here; the sheet snaps instead. */
+  #sidebar.collapsed {
+    margin-left: 0;
+  }
+
+  /* Handle and header stay pinned to the sheet's top edge, so the drag
+     affordance is still there after you scroll, and it is what shows at peek. */
+  .sheet-handle {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--panel);
+  }
+
+  .sidebar-header {
+    position: sticky;
+    top: 28px;
+    z-index: 1;
+    flex: 0 0 auto;
+    padding: 4px 16px 10px;
+    background: var(--panel);
+    touch-action: none;
+  }
+
+  .sidebar-footer {
+    flex: 0 0 auto;
+  }
+
+  /* Panels size to their content and let the sheet do the scrolling. */
+  .panel,
+  #layers-panel {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  .tab-pane,
+  .admin-county-list {
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+  }
+
+  #zonal-panel {
+    max-height: none;
+  }
+
   .sidebar-resizer {
     display: none;
   }
-  .zonal-results {
-    grid-template-columns: 1fr;
+
+  /* The sheet is always at least peeking, so there is nothing to re-open. */
+  #open-sidebar {
+    display: none !important;
+  }
+
+  /* Keep the time bar and MapLibre's attribution above the peeking sheet. */
+  /* Five controls will not fit one row on a phone, so they take named cells
+     across three. Named areas rather than implicit placement: two controls
+     landing in the same cell is exactly the bug this avoids. */
+  .time-bar {
+    bottom: calc(var(--map-chrome-base) + var(--attrib-h) + 12px);
+    padding: 8px 10px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "play   track  track"
+      "speed  speed  loop"
+      "source source source";
+  }
+  .time-play {
+    grid-area: play;
+  }
+  .time-track {
+    grid-area: track;
+  }
+  .time-speed {
+    grid-area: speed;
+  }
+  .time-loop {
+    grid-area: loop;
+    justify-self: end;
+  }
+  .time-source {
+    grid-area: source;
+    max-width: none;
+  }
+  /* A transient message must not sit on the controls you are using. At the
+     top it is out of the thumb zone, and it stops short of the map's own
+     control column on the right. */
+  .toast {
+    top: calc(12px + var(--safe-t));
+    bottom: auto;
+    left: calc(12px + var(--safe-l));
+    right: calc(12px + var(--tap) + 12px + var(--safe-r));
+    transform: none;
+    max-width: none;
+  }
+
+  /* Attribution is a licence requirement, so it takes the lowest slot above
+     the peeking sheet and everything else stacks on top of it. */
+  .maplibregl-ctrl-bottom-right,
+  .maplibregl-ctrl-bottom-left {
+    bottom: var(--map-chrome-base);
+  }
+
+  /* A modal on a phone is a full-height sheet, not a floating card. */
+  .modal {
+    padding: 0;
+    place-items: end stretch;
+  }
+  .modal-card,
+  .modal-card.zonal-modal-card {
+    width: 100%;
+    max-height: 92dvh;
+    border-radius: 14px 14px 0 0;
+    border-bottom: none;
+    padding: 16px 16px calc(16px + var(--safe-b));
+  }
+  .modal-head {
+    top: -16px;
+    padding-top: 16px;
+    margin-top: -16px;
+  }
+  .modal-actions {
+    position: sticky;
+    bottom: calc(-16px - var(--safe-b));
+    padding: 12px 0 calc(12px + var(--safe-b));
+    margin-bottom: calc(-16px - var(--safe-b));
+    background: var(--panel);
+  }
+  .modal-actions .btn-primary,
+  .modal-actions .btn-ghost {
+    flex: 1;
+  }
+
+  /* A layer row on a phone was fitting handle + checkbox + name + type badge
+     + two buttons on one line, which left the name about 90px and truncated
+     every real layer name. The name gets its own line; the badge and the
+     buttons share the one below it. */
+  .layer-row {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "handle toggle name name"
+      "handle toggle meta actions";
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 4px;
+  }
+  .layer-row:has(.layer-order-select) {
+    grid-template-areas:
+      "handle toggle name  name"
+      "handle toggle meta  actions"
+      "handle toggle order order";
+  }
+  .layer-drag-handle {
+    grid-area: handle;
+  }
+  .layer-toggle {
+    grid-area: toggle;
+  }
+  .layer-name {
+    grid-area: name;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    /* Two lines is enough for a real name and keeps the card scannable. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .layer-meta {
+    grid-area: meta;
+  }
+  .layer-actions {
+    grid-area: actions;
+    justify-self: end;
+  }
+  .layer-order-select {
+    grid-area: order;
+    justify-self: start;
+  }
+
+  .layer-group-title {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .field-row {
+    flex-wrap: wrap;
+  }
+  .field-row .field {
+    flex: 1 1 140px;
+  }
+
+  .zonal-actions {
+    flex-wrap: wrap;
+  }
+  .zonal-actions button {
+    flex: 1 1 140px;
+  }
+}
+
+/* ---------- Side panel: tablet and up ---------- */
+
+@media (min-width: 768px) {
+  .sheet-handle {
+    display: none;
+  }
+  #sidebar {
+    /* Never let the panel take more than a third of a narrow tablet. */
+    width: min(var(--sidebar-w), 38vw);
+  }
+  #sidebar.collapsed {
+    margin-left: calc(-1 * min(var(--sidebar-w), 38vw));
+  }
+}
+
+@media (min-width: 1024px) {
+  #sidebar {
+    width: var(--sidebar-w);
+  }
+  #sidebar.collapsed {
+    margin-left: calc(-1 * var(--sidebar-w));
+  }
+}
+
+/* ---------- Very wide displays ---------- */
+
+@media (min-width: 1600px) {
+  /* The histogram is the reason this modal exists; give it the room a wide
+     monitor has. Forms stay narrow: width is not a virtue for a text field. */
+  .modal-card.zonal-modal-card {
+    width: min(1100px, 100%);
+  }
+}
+
+/* ---------- Short viewports: landscape phone, split laptop window ---------- */
+
+@media (max-height: 560px) {
+  #zonal-panel {
+    max-height: none;
+  }
+  .admin-county-list {
+    max-height: 30dvh;
+  }
+  .keyboard-help-panel {
+    max-height: 80dvh;
+  }
+  .modal {
+    place-items: stretch;
+  }
+  .modal-card,
+  .modal-card.zonal-modal-card {
+    max-height: 100%;
+  }
+}
+
+/* On a landscape phone the sheet would swallow the screen; cap it and let
+   the results grid stay two-up, since width is the resource we have. */
+@media (max-width: 767.98px) and (orientation: landscape) {
+  #sidebar {
+    height: 92dvh;
+    transform: translate3d(0, var(--sheet-y, calc(92dvh - 80px)), 0);
+  }
+}
+
+/* ---------- Input method ---------- */
+
+@media (pointer: coarse) {
+  /* Drag-to-reorder is pointer-native. The order selects remain the touch and
+     keyboard path, so they must not be squeezed out of reach. */
+  .group-order-mode,
+  .layer-order-select {
+    min-height: var(--tap);
+  }
+  .layer-group-actions {
+    gap: 8px;
+    padding-bottom: 4px;
+  }
+  .layer-list,
+  .builtin-list {
+    gap: 10px;
+  }
+  .layer-actions {
+    gap: 8px;
+  }
+  /* 16px is the threshold below which iOS Safari zooms the page on focus,
+     which then leaves the map panned off-centre. */
+  input[type="text"],
+  input[type="url"],
+  input[type="number"],
+  input[type="file"],
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* The sheet still needs to move; it just arrives immediately. */
+  #sidebar {
+    transition: none;
+  }
+}
+
+/* ---------- Forced colors ---------- */
+
+@media (forced-colors: active) {
+  .btn-primary,
+  .btn-ghost,
+  .icon-btn,
+  .layer-card,
+  .layer-group {
+    border: 1px solid ButtonBorder;
+  }
+  :focus-visible {
+    outline: 2px solid Highlight;
   }
 }
