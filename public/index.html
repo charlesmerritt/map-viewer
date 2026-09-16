@@ -182,6 +182,7 @@
 
         <div class="tabs" role="tablist">
           <button class="tab active" data-tab="titiler" role="tab" aria-selected="true">TiTiler (COG)</button>
+          <button class="tab" data-tab="vector" role="tab" aria-selected="false">Vector</button>
           <button class="tab" data-tab="builtin" role="tab" aria-selected="false">Built-in</button>
           <button class="tab" data-tab="file" role="tab" aria-selected="false">Upload file</button>
         </div>
@@ -250,6 +251,34 @@
                 <option value="q3">q3</option>
               </select>
             </label>
+          </details>
+        </div>
+
+        <div class="tab-pane hidden" data-pane="vector">
+          <p class="hint">
+            Vector layers stream Mapbox Vector Tiles from PostGIS via pg_tileserv —
+            the same tile-on-demand path the COG rasters use, so only the features
+            in view are fetched. Pick a published layer, or upload a GeoJSON to
+            publish a new one.
+          </p>
+          <ul id="vector-list" class="builtin-list"></ul>
+          <details class="advanced">
+            <summary>Publish a GeoJSON</summary>
+            <label class="field">
+              <span>Layer name</span>
+              <input type="text" id="vector-upload-name" placeholder="e.g. Study plots" />
+            </label>
+            <label class="field">
+              <span>GeoJSON file</span>
+              <input type="file" id="vector-upload-input" accept=".geojson,.json" />
+            </label>
+            <p class="hint">
+              The file is loaded into PostGIS as a new table and served as vector
+              tiles. Unlike the browser-side GeoJSON path on the Upload tab, this
+              persists and scales past a few megabytes.
+            </p>
+            <button class="btn-ghost" id="vector-upload-btn" type="button">Publish layer</button>
+            <p class="hint" id="vector-upload-status" role="status" aria-live="polite"></p>
           </details>
         </div>
 
@@ -326,6 +355,7 @@
     <script src="layer-groups-core.js"></script>
     <script src="raster-upload.js"></script>
     <script src="state.js"></script>
+    <script src="vector-tiles.js"></script>
     <script src="layers.js"></script>
     <script src="boundary-layers.js"></script>
     <script src="draw-tools.js"></script>

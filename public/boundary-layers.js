@@ -1,8 +1,10 @@
 /* ----------------------------------------------------------------
    boundary-layers.js — built-in US state/county polygon toggles.
 
-   Loads simplified static GeoJSON assets from public/data and exposes a
-   small renderer for the Built-in tab in app.js.
+   Serves the boundaries as pg_tileserv vector tiles when the deployment
+   has VECTOR_TILE_BASE_URL set, and falls back to the static GeoJSON in
+   public/data when it does not. Also exposes a small renderer for the
+   Built-in tab in app.js.
    ---------------------------------------------------------------- */
 
 (function () {
@@ -285,74 +287,130 @@
     orderBoundaryLayers(map);
   }
 
+  // Boundaries come from pg_tileserv when the deployment has a vector tile
+  // base configured, and fall back to the static GeoJSON in public/data
+  // otherwise, so a database-less deployment keeps working unchanged.
+  function vectorBoundarySource(table) {
+    const base = window.VectorTiles?.getTileBaseUrl?.() || "";
+    if (!base) return null;
+    return {
+      type: "vector",
+      tiles: [`${base}/vector.${table}/{z}/{x}/{y}.pbf`],
+      minzoom: 0,
+      // The Census source is generalized to 1:5,000,000, so there is no detail
+      // past z12 to fetch. Capping here makes MapLibre overzoom the z12 tile
+      // instead of asking pg_tileserv for tiles that carry no new geometry.
+      maxzoom: 12,
+    };
+  }
+
+  function boundarySourceLayer(table) {
+    return vectorBoundarySource(table) ? table : undefined;
+  }
+
+  // MapLibre rejects `source-layer` on a GeoJSON source, so the property is
+  // only ever set when the source is actually a vector one.
+  function withSourceLayer(spec, table) {
+    const sourceLayer = boundarySourceLayer(table);
+    return sourceLayer ? { ...spec, "source-layer": sourceLayer } : spec;
+  }
+
   async function ensureStateLayers(map) {
     if (!map.getSource(IDS.statesSource)) {
-      map.addSource(IDS.statesSource, {
-        type: "geojson",
-        data: await loadStatesData(),
-        promoteId: "statefp",
-      });
+      const vector = vectorBoundarySource("us_states");
+      map.addSource(
+        IDS.statesSource,
+        vector || {
+          type: "geojson",
+          data: await loadStatesData(),
+          promoteId: "statefp",
+        }
+      );
     }
     if (!map.getLayer(IDS.statesFill)) {
-      map.addLayer({
-        id: IDS.statesFill,
-        type: "fill",
-        source: IDS.statesSource,
-        layout: { visibility: "none" },
-        paint: {
-          "fill-color": "#22c55e",
-          "fill-opacity": 0.12,
-        },
-      });
+      map.addLayer(
+        withSourceLayer(
+          {
+            id: IDS.statesFill,
+            type: "fill",
+            source: IDS.statesSource,
+            layout: { visibility: "none" },
+            paint: {
+              "fill-color": "#22c55e",
+              "fill-opacity": 0.12,
+            },
+          },
+          "us_states"
+        )
+      );
     }
     if (!map.getLayer(IDS.statesLine)) {
-      map.addLayer({
-        id: IDS.statesLine,
-        type: "line",
-        source: IDS.statesSource,
-        layout: { visibility: "none" },
-        paint: {
-          "line-color": "#a7f3d0",
-          "line-width": 1.6,
-          "line-opacity": 0.95,
-        },
-      });
+      map.addLayer(
+        withSourceLayer(
+          {
+            id: IDS.statesLine,
+            type: "line",
+            source: IDS.statesSource,
+            layout: { visibility: "none" },
+            paint: {
+              "line-color": "#a7f3d0",
+              "line-width": 1.6,
+              "line-opacity": 0.95,
+            },
+          },
+          "us_states"
+        )
+      );
     }
     attachStateClickHandler(map);
   }
 
   async function ensureCountyLayers(map) {
     if (!map.getSource(IDS.countiesSource)) {
-      map.addSource(IDS.countiesSource, {
-        type: "geojson",
-        data: await loadCountiesData(),
-        promoteId: "geoid",
-      });
+      const vector = vectorBoundarySource("us_counties");
+      map.addSource(
+        IDS.countiesSource,
+        vector || {
+          type: "geojson",
+          data: await loadCountiesData(),
+          promoteId: "geoid",
+        }
+      );
     }
     if (!map.getLayer(IDS.countiesFill)) {
-      map.addLayer({
-        id: IDS.countiesFill,
-        type: "fill",
-        source: IDS.countiesSource,
-        layout: { visibility: "none" },
-        paint: {
-          "fill-color": "#f59e0b",
-          "fill-opacity": 0.10,
-        },
-      });
+      map.addLayer(
+        withSourceLayer(
+          {
+            id: IDS.countiesFill,
+            type: "fill",
+            source: IDS.countiesSource,
+            layout: { visibility: "none" },
+            paint: {
+              "fill-color": "#f59e0b",
+              "fill-opacity": 0.10,
+            },
+          },
+          "us_counties"
+        )
+      );
     }
     if (!map.getLayer(IDS.countiesLine)) {
-      map.addLayer({
-        id: IDS.countiesLine,
-        type: "line",
-        source: IDS.countiesSource,
-        layout: { visibility: "none" },
-        paint: {
-          "line-color": "#fbbf24",
-          "line-width": 0.8,
-          "line-opacity": 0.85,
-        },
-      });
+      map.addLayer(
+        withSourceLayer(
+          {
+            id: IDS.countiesLine,
+            type: "line",
+            source: IDS.countiesSource,
+            layout: { visibility: "none" },
+            paint: {
+              "line-color": "#fbbf24",
+              "line-width": 0.8,
+              "line-opacity": 0.85,
+            },
+          },
+          "us_counties"
+        )
+      );
     }
     attachCountyClickHandler(map);
   }
@@ -398,6 +456,22 @@
     }
   }
 
+  // Resolves the authoritative feature for a clicked boundary. Vector-tile
+  // geometry is clipped to the tile, so zonal statistics would measure the
+  // wrong polygon if we used it; PostGIS returns the whole thing. Without a
+  // tile server configured this reads the static GeoJSON as before.
+  async function resolveBoundaryFeature(kind, id) {
+    const table = kind === "county" ? "us_counties" : "us_states";
+    if (vectorBoundarySource(table)) {
+      const feature = await window.VectorTiles.fetchFeature(table, id);
+      if (feature) return feature;
+      // Fall through to the static file rather than dropping the click.
+    }
+    const data = kind === "county" ? await loadCountiesData() : await loadStatesData();
+    const key = kind === "county" ? "geoid" : "statefp";
+    return data.features.find((item) => item.properties[key] === id) || null;
+  }
+
   function attachStateClickHandler(map) {
     if (stateClickHandlerAttached) return;
     map.on("click", IDS.statesFill, async (event) => {
@@ -412,8 +486,7 @@
       const feature = event.features && event.features[0];
       if (!feature) return;
       const statefp = String(feature.properties?.statefp || feature.properties?.STATEFP || "");
-      const data = await loadStatesData();
-      const fullFeature = data.features.find((item) => item.properties.statefp === statefp);
+      const fullFeature = await resolveBoundaryFeature("state", statefp);
       if (fullFeature) selectBoundary("state", fullFeature);
     });
     map.on("mouseenter", IDS.statesFill, () => {
@@ -433,8 +506,7 @@
       const feature = event.features && event.features[0];
       if (!feature) return;
       const geoid = String(feature.properties?.geoid || feature.properties?.GEOID || "");
-      const data = await loadCountiesData();
-      const fullFeature = data.features.find((item) => item.properties.geoid === geoid);
+      const fullFeature = await resolveBoundaryFeature("county", geoid);
       if (fullFeature) selectBoundary("county", fullFeature);
     });
     map.on("mouseenter", IDS.countiesFill, () => {

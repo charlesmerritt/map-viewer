@@ -466,6 +466,49 @@
     }[c]));
   }
 
+  // MapLibre's GeoJSONSource exposes no `bounds`, so the extent has to be
+  // walked from the data itself for zoom-to-layer to work.
+  function geojsonBounds(data) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    const visit = (coords) => {
+      if (typeof coords[0] === "number") {
+        const [x, y] = coords;
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+        return;
+      }
+      coords.forEach(visit);
+    };
+
+    const visitGeometry = (geometry) => {
+      if (!geometry) return;
+      if (geometry.type === "GeometryCollection") {
+        (geometry.geometries || []).forEach(visitGeometry);
+        return;
+      }
+      if (geometry.coordinates) visit(geometry.coordinates);
+    };
+
+    if (data.type === "FeatureCollection") {
+      (data.features || []).forEach((f) => visitGeometry(f.geometry));
+    } else if (data.type === "Feature") {
+      visitGeometry(data.geometry);
+    } else {
+      visitGeometry(data);
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+    return [minX, minY, maxX, maxY];
+  }
+
   async function loadGeoJsonUrl(url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error("HTTP " + res.status + " fetching GeoJSON");
@@ -580,8 +623,7 @@
             "circle-opacity": 0.6 * entry.opacity,
           },
         });
-        const bounds = map.getSource(srcId).bounds;
-        entry.__bounds = bounds;
+        entry.__bounds = geojsonBounds(data);
       }
       
       if (isTimeSeries) entry.timeCache.set(0, data);
@@ -620,6 +662,204 @@
     return entry;
   }
 
+  // ---- Vector tile layers (PostGIS via pg_tileserv) ----
+
+  // Unlike the GeoJSON path, nothing is downloaded here: MapLibre pulls MVT
+  // tiles for the current viewport only, and styling is a data-driven
+  // expression evaluated per feature.
+  async function addVectorLayerFromConfig(cfg) {
+    const map = State.getMap();
+    if (!map) throw new Error("Map not ready");
+
+    const id = State.nextId("vector");
+    const entry = {
+      id,
+      name: cfg.name || cfg.title || "Untitled vector layer",
+      type: "vector",
+      visible: cfg.visible !== false,
+      opacity: cfg.opacity != null ? cfg.opacity : 1,
+      style: { ...(cfg.style || {}) },
+      geometryType: cfg.geometryType || "Polygon",
+      sourceLayer: cfg.sourceLayer || cfg.id,
+      tableName: cfg.sourceLayer || cfg.id,
+      tileUrl: cfg.tileUrl,
+      attributes: cfg.attributes || [],
+      idColumn: cfg.idColumn || null,
+      labelColumn: cfg.labelColumn || null,
+      builtin: !!cfg.builtin,
+      times: null,
+      timeIndex: null,
+      timeCache: null,
+      sourceId: null,
+      layerId: null,
+      renderLayers: [],
+      loading: true,
+      error: null,
+      sourceDesc: cfg.description || "pg_tileserv: " + (cfg.sourceLayer || cfg.id),
+    };
+
+    State.addLayer(entry);
+
+    try {
+      if (!cfg.tileUrl) throw new Error("Layer has no tile URL");
+
+      const srcId = sourceId(id, "source");
+      entry.sourceId = srcId;
+
+      map.addSource(srcId, {
+        type: "vector",
+        tiles: [cfg.tileUrl],
+        minzoom: cfg.minZoom != null ? cfg.minZoom : 0,
+        maxzoom: cfg.maxZoom != null ? cfg.maxZoom : 22,
+      });
+
+      const ids = {
+        fill: sourceId(id, "fill"),
+        line: sourceId(id, "line"),
+        circle: sourceId(id, "circle"),
+      };
+      const specs = window.VectorTiles.buildPaintLayers(entry, ids);
+
+      specs.forEach((spec) => {
+        map.addLayer({
+          id: spec.id,
+          type: spec.type,
+          source: srcId,
+          "source-layer": entry.sourceLayer,
+          paint: spec.paint,
+        });
+      });
+
+      entry.renderLayers = specs.map((spec) => ({ id: spec.id, role: spec.role }));
+      // layerId is what the rest of the app treats as "the" layer for this
+      // entry (visibility, ordering); the fill or the first spec stands in.
+      entry.layerId = specs[0] ? specs[0].id : null;
+
+      if (!entry.visible) {
+        entry.renderLayers.forEach(({ id: lid }) =>
+          map.setLayoutProperty(lid, "visibility", "none")
+        );
+      }
+
+      // Bounds come from PostGIS (ST_Extent) rather than from the tiles, so
+      // zoom-to-layer works before any tile has loaded.
+      window.VectorTiles.fetchBounds(entry.tableName)
+        .then((bounds) => {
+          if (!bounds) return;
+          entry.__bounds = bounds;
+          const others = State.getLayers().filter((l) => l.id !== id);
+          if (others.length === 0) {
+            map.fitBounds(bounds, { padding: 40, maxZoom: 12 });
+          }
+          State.updateLayer(id, {});
+        })
+        .catch(() => {
+          /* zoom-to-layer stays unavailable; not worth surfacing */
+        });
+
+      if (map.getLayer("basemap")) {
+        const allLayers = map.getStyle().layers;
+        const firstNonBase = allLayers.find((l) => l.id !== "basemap");
+        if (firstNonBase) map.moveLayer("basemap", firstNonBase.id);
+      }
+      window.DrawTools?.raiseLayers?.();
+      attachVectorPopup(entry);
+    } catch (err) {
+      console.error("Failed to load vector layer", entry.name, err);
+      entry.error = err.message || String(err);
+    } finally {
+      entry.loading = false;
+      State.updateLayer(id, {});
+    }
+
+    return entry;
+  }
+
+  const vectorPopupHandlers = new Map();
+
+  function attachVectorPopup(entry) {
+    const map = State.getMap();
+    if (!map || entry.renderLayers.length === 0) return;
+
+    const handler = (event) => {
+      const ids = entry.renderLayers.map((l) => l.id).filter((id) => map.getLayer(id));
+      if (ids.length === 0) return;
+      const features = map.queryRenderedFeatures(event.point, { layers: ids });
+      if (features.length === 0) return;
+      new maplibregl.Popup({ closeButton: true, maxWidth: "320px" })
+        .setLngLat(event.lngLat)
+        .setHTML(window.VectorTiles.popupHtml(features[0], entry))
+        .addTo(map);
+    };
+
+    // Drawing owns the click while it is active, and a click landing on an
+    // already-drawn polygon belongs to that polygon — the same two guards the
+    // boundary selection handlers use.
+    const guarded = (event) => {
+      if (window.DrawTools?.isActive?.()) return;
+      if (window.DrawTools?.isPointOnDrawnPolygon?.(event.point)) return;
+      handler(event);
+    };
+
+    entry.renderLayers.forEach(({ id }) => {
+      map.on("click", id, guarded);
+      map.on("mouseenter", id, () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", id, () => {
+        map.getCanvas().style.cursor = "";
+      });
+    });
+    vectorPopupHandlers.set(entry.id, guarded);
+  }
+
+  function detachVectorPopup(entry) {
+    const map = State.getMap();
+    const handler = vectorPopupHandlers.get(entry.id);
+    if (!map || !handler) return;
+    entry.renderLayers.forEach(({ id }) => {
+      map.off("click", id, handler);
+    });
+    vectorPopupHandlers.delete(entry.id);
+  }
+
+  // Re-paints an existing vector layer after the user changes the styling
+  // attribute, colormap or range — no source churn, just new paint values.
+  function setVectorStyle(layer, patch) {
+    const map = State.getMap();
+    if (!map || layer.type !== "vector") return;
+    layer.style = { ...(layer.style || {}), ...patch };
+
+    const color = window.VectorTiles.styleExpression(layer.style);
+    layer.renderLayers.forEach(({ id, role }) => {
+      if (!map.getLayer(id)) return;
+      if (role === "fill") {
+        map.setPaintProperty(id, "fill-color", color);
+        map.setPaintProperty(
+          id,
+          "fill-opacity",
+          (layer.style.fillOpacity != null ? layer.style.fillOpacity : 0.18) *
+            layer.opacity
+        );
+      } else if (role === "line") {
+        map.setPaintProperty(id, "line-color", color);
+        map.setPaintProperty(
+          id,
+          "line-width",
+          layer.style.lineWidth != null ? layer.style.lineWidth : 1.5
+        );
+      } else if (role === "circle") {
+        map.setPaintProperty(id, "circle-color", color);
+        map.setPaintProperty(
+          id,
+          "circle-radius",
+          layer.style.radius != null ? layer.style.radius : 5
+        );
+      }
+    });
+    State.updateLayer(layer.id, {});
+  }
+
   function describeSource(cfg) {
     if (Array.isArray(cfg.times) && cfg.times.length) {
       return cfg.times.length + " timesteps";
@@ -639,6 +879,14 @@
       return;
     }
     const visibility = visible ? "visible" : "none";
+    if (layer.type === "vector") {
+      (layer.renderLayers || []).forEach(({ id }) => {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
+      });
+      State.updateLayer(layer.id, { visible });
+      State.reconcileActiveTimeLayer();
+      return;
+    }
     map.setLayoutProperty(layer.layerId, "visibility", visibility);
     if (layer.type === "geojson") {
       map.setLayoutProperty(layer.layerId + "_line", "visibility", visibility);
@@ -652,7 +900,23 @@
     layer.opacity = opacity;
     const map = State.getMap();
     if (layer.layerId) {
-      if (layer.type === "cog" || layer.type === "d2s-raster") {
+      if (layer.type === "vector") {
+        const style = layer.style || {};
+        (layer.renderLayers || []).forEach(({ id, role }) => {
+          if (!map.getLayer(id)) return;
+          if (role === "fill") {
+            map.setPaintProperty(
+              id,
+              "fill-opacity",
+              (style.fillOpacity != null ? style.fillOpacity : 0.18) * opacity
+            );
+          } else if (role === "line") {
+            map.setPaintProperty(id, "line-opacity", opacity);
+          } else if (role === "circle") {
+            map.setPaintProperty(id, "circle-opacity", 0.8 * opacity);
+          }
+        });
+      } else if (layer.type === "cog" || layer.type === "d2s-raster") {
         map.setPaintProperty(layer.layerId, "raster-opacity", opacity);
       } else if (layer.type === "geojson") {
         map.setPaintProperty(layer.layerId, "fill-opacity", 0.18 * opacity);
@@ -729,6 +993,24 @@
 
   function removeLayer(layer) {
     const map = State.getMap();
+    if (layer.type === "vector") {
+      detachVectorPopup(layer);
+      (layer.renderLayers || []).forEach(({ id }) => {
+        if (map.getLayer(id)) map.removeLayer(id);
+      });
+      if (layer.sourceId && map.getSource(layer.sourceId)) {
+        map.removeSource(layer.sourceId);
+      }
+      // Built-in tables stay in PostGIS; only uploads are dropped.
+      if (!layer.builtin && layer.tableName) {
+        window.VectorTiles?.deleteLayer(layer.tableName).catch((error) => {
+          console.warn("Failed to drop vector table", layer.tableName, error);
+        });
+      }
+      State.removeLayer(layer.id);
+      State.reconcileActiveTimeLayer();
+      return;
+    }
     if (layer.layerId) {
       if (map.getLayer(layer.layerId)) map.removeLayer(layer.layerId);
       if (layer.type === "geojson") {
@@ -751,6 +1033,9 @@
   }
 
   function renderedLayerIds(layer) {
+    if (layer.type === "vector") {
+      return (layer.renderLayers || []).map(({ id }) => id);
+    }
     if (!layer.layerId) return [];
     if (layer.type === "geojson") {
       return [layer.layerId, layer.layerId + "_line", layer.layerId + "_circle"];
@@ -930,6 +1215,8 @@
     detectType,
     addLayerFromConfig,
     addD2STileLayer,
+    addVectorLayerFromConfig,
+    setVectorStyle,
     setLayerVisible,
     setLayerOpacity,
     setLayerColormap,

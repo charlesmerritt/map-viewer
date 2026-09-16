@@ -6,12 +6,16 @@
   "packageManager": "pnpm@11.2.2",
   "scripts": {
     "preinstall": "node scripts/enforce-pnpm.mjs",
-    "start": "node server.mjs",
+    "start": "node scripts/boot.mjs",
     "dev": "node server.mjs",
     "build:admin-boundaries": "node scripts/build-admin-boundaries.mjs",
-    "test": "node scripts/validate-admin-boundaries.mjs && node scripts/test-layer-groups.mjs && node scripts/test-state-groups.mjs && node scripts/test-zonal-core.mjs && node scripts/test-draw-layer-order.mjs && node scripts/test-draw-click-defer.mjs && node scripts/test-raster-upload-client.mjs && node scripts/test-raster-upload-server.mjs"
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "db:load-boundaries": "node scripts/db-load-boundaries.mjs",
+    "test": "node scripts/validate-admin-boundaries.mjs && node scripts/test-layer-groups.mjs && node scripts/test-state-groups.mjs && node scripts/test-zonal-core.mjs && node scripts/test-draw-layer-order.mjs && node scripts/test-draw-click-defer.mjs && node scripts/test-raster-upload-client.mjs && node scripts/test-raster-upload-server.mjs && node scripts/test-vector-layers.mjs && node scripts/test-vector-style.mjs"
   },
-  "dependencies": {},
+  "dependencies": {
+    "pg": "^8.23.0"
+  },
   "engines": {
     "node": ">=18",
     "pnpm": ">=11"

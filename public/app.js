@@ -462,6 +462,10 @@
       if (!group) card.appendChild(styleContainer);
     }
 
+    if (layer.type === "vector") {
+      card.appendChild(renderVectorStyleControls(layer, group));
+    }
+
     if (layer.loading) {
       const loading = document.createElement("div");
       loading.className = "layer-meta";
@@ -482,6 +486,143 @@
     }
 
     return card;
+  }
+
+  // Attribute-driven styling for a vector layer: pick a column, pick numeric or
+  // categorical, and the paint becomes a MapLibre expression over that column.
+  // This is the capability the browser-side GeoJSON path never had.
+  function renderVectorStyleControls(layer, group) {
+    const container = group ? document.createElement("div") : document.createElement("details");
+    container.className = "layer-style-details";
+    if (!group) {
+      const summary = document.createElement("summary");
+      summary.textContent = "Style options";
+      container.appendChild(summary);
+    }
+
+    const style = layer.style || {};
+
+    const labelledRow = (labelText, control) => {
+      const row = document.createElement("div");
+      row.className = "layer-opacity";
+      row.style.alignItems = "center";
+      const label = document.createElement("span");
+      label.className = "opacity-val";
+      label.style.minWidth = "auto";
+      label.style.marginRight = "6px";
+      label.textContent = labelText;
+      row.appendChild(label);
+      row.appendChild(control);
+      return row;
+    };
+
+    const attrSelect = document.createElement("select");
+    attrSelect.className = "layer-colormap-select";
+    const noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "Single colour";
+    attrSelect.appendChild(noneOpt);
+    (layer.attributes || []).forEach((attr) => {
+      const opt = document.createElement("option");
+      opt.value = attr;
+      opt.textContent = attr;
+      if (attr === style.attribute) opt.selected = true;
+      attrSelect.appendChild(opt);
+    });
+    container.appendChild(labelledRow("Colour by", attrSelect));
+
+    const modeSelect = document.createElement("select");
+    modeSelect.className = "layer-colormap-select";
+    [
+      { value: "numeric", label: "Numeric ramp" },
+      { value: "categorical", label: "Categories" },
+    ].forEach((m) => {
+      const opt = document.createElement("option");
+      opt.value = m.value;
+      opt.textContent = m.label;
+      if (m.value === style.mode) opt.selected = true;
+      modeSelect.appendChild(opt);
+    });
+    const modeRow = labelledRow("Mode", modeSelect);
+    container.appendChild(modeRow);
+
+    const cmSelect = document.createElement("select");
+    cmSelect.className = "layer-colormap-select";
+    ["viridis", "magma", "plasma", "cividis", "Greens", "YlGn", "RdYlGn", "Spectral"].forEach(
+      (name) => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        if (name === style.colormap) opt.selected = true;
+        cmSelect.appendChild(opt);
+      }
+    );
+    const cmRow = labelledRow("Colormap", cmSelect);
+    container.appendChild(cmRow);
+
+    const rangeRow = document.createElement("div");
+    rangeRow.className = "layer-opacity";
+    rangeRow.style.alignItems = "center";
+    const minInput = document.createElement("input");
+    minInput.type = "number";
+    minInput.step = "any";
+    minInput.placeholder = "min";
+    minInput.className = "layer-range-input";
+    if (style.min != null) minInput.value = style.min;
+    const maxInput = document.createElement("input");
+    maxInput.type = "number";
+    maxInput.step = "any";
+    maxInput.placeholder = "max";
+    maxInput.className = "layer-range-input";
+    if (style.max != null) maxInput.value = style.max;
+    rangeRow.appendChild(minInput);
+    rangeRow.appendChild(maxInput);
+    container.appendChild(rangeRow);
+
+    // Category values have to come from somewhere; rather than scanning tiles,
+    // the user lists them. Empty means "fall back to the single colour".
+    const catInput = document.createElement("input");
+    catInput.type = "text";
+    catInput.className = "layer-range-input";
+    catInput.style.width = "100%";
+    catInput.placeholder = "value1, value2, …";
+    if (Array.isArray(style.categories)) catInput.value = style.categories.join(", ");
+    const catRow = labelledRow("Values", catInput);
+    container.appendChild(catRow);
+
+    const syncVisibility = () => {
+      const byAttribute = Boolean(attrSelect.value);
+      const numeric = modeSelect.value !== "categorical";
+      modeRow.classList.toggle("hidden", !byAttribute);
+      cmRow.classList.toggle("hidden", !byAttribute || !numeric);
+      rangeRow.classList.toggle("hidden", !byAttribute || !numeric);
+      catRow.classList.toggle("hidden", !byAttribute || numeric);
+    };
+    syncVisibility();
+
+    const apply = () => {
+      syncVisibility();
+      Layers.setVectorStyle(layer, {
+        attribute: attrSelect.value || null,
+        mode: modeSelect.value,
+        colormap: cmSelect.value,
+        min: minInput.value === "" ? null : Number(minInput.value),
+        max: maxInput.value === "" ? null : Number(maxInput.value),
+        categories: catInput.value
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      });
+    };
+
+    attrSelect.addEventListener("change", apply);
+    modeSelect.addEventListener("change", apply);
+    cmSelect.addEventListener("change", apply);
+    minInput.addEventListener("change", apply);
+    maxInput.addEventListener("change", apply);
+    catInput.addEventListener("change", apply);
+
+    return container;
   }
 
   function renderLayerOrderSelect(group, layer) {
@@ -883,8 +1024,13 @@
           p.classList.toggle("hidden", p.dataset.pane !== which);
         });
         setAddConfirmLabel(which);
+        // The catalog is a network round-trip, so it loads when the tab is
+        // first opened rather than on every modal open.
+        if (which === "vector") loadVectorCatalog(false);
       });
     });
+
+    wireVectorUpload();
 
     document.getElementById("add-confirm").addEventListener("click", () =>
       onConfirmAdd(modal)
@@ -909,12 +1055,137 @@
     document.getElementById("titiler-scaler").value = "";
     document.getElementById("file-name").value = "";
     document.getElementById("file-input").value = "";
+    const vectorName = document.getElementById("vector-upload-name");
+    const vectorInput = document.getElementById("vector-upload-input");
+    const vectorStatus = document.getElementById("vector-upload-status");
+    if (vectorName) vectorName.value = "";
+    if (vectorInput) vectorInput.value = "";
+    if (vectorStatus) vectorStatus.textContent = "";
     setAddConfirmLabel("titiler");
   }
 
   function setAddConfirmLabel(activeTab) {
     document.getElementById("add-confirm").textContent =
-      activeTab === "builtin" ? "Done" : "Add layer";
+      activeTab === "builtin" || activeTab === "vector" ? "Done" : "Add layer";
+  }
+
+  // ---- Vector (pg_tileserv) tab ----
+
+  let vectorCatalogLoaded = false;
+
+  async function loadVectorCatalog(force) {
+    const root = document.getElementById("vector-list");
+    if (!root || (vectorCatalogLoaded && !force)) return;
+    root.innerHTML = "";
+
+    const pending = document.createElement("li");
+    pending.className = "empty-hint";
+    pending.textContent = "Loading published layers…";
+    root.appendChild(pending);
+
+    let payload;
+    try {
+      payload = await window.VectorTiles.fetchCatalog();
+    } catch (err) {
+      root.innerHTML = "";
+      const hint = document.createElement("li");
+      hint.className = "empty-hint";
+      hint.textContent = "Could not reach the vector catalog: " + err.message;
+      root.appendChild(hint);
+      return;
+    }
+
+    vectorCatalogLoaded = true;
+    root.innerHTML = "";
+
+    if (!payload.configured) {
+      const hint = document.createElement("li");
+      hint.className = "empty-hint";
+      hint.textContent =
+        "Vector layers are not configured on this deployment. Set DATABASE_URL " +
+        "and VECTOR_TILE_BASE_URL, then run pnpm db:migrate.";
+      root.appendChild(hint);
+      return;
+    }
+
+    if (payload.layers.length === 0) {
+      const hint = document.createElement("li");
+      hint.className = "empty-hint";
+      hint.textContent = "No vector layers published yet.";
+      root.appendChild(hint);
+      return;
+    }
+
+    payload.layers.forEach((cfg) => {
+      const li = document.createElement("li");
+      li.className = "builtin-item";
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const nm = document.createElement("span");
+      nm.className = "name";
+      nm.textContent = cfg.name;
+      const desc = document.createElement("span");
+      desc.className = "desc";
+      desc.textContent =
+        cfg.description ||
+        `${cfg.geometryType} · ${cfg.attributes.length} attribute` +
+          (cfg.attributes.length === 1 ? "" : "s");
+      meta.appendChild(nm);
+      meta.appendChild(desc);
+
+      const btn = document.createElement("button");
+      btn.className = "btn-ghost";
+      btn.textContent = "Add";
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          const layer = await Layers.addVectorLayerFromConfig(cfg);
+          if (layer.error) throw new Error(layer.error);
+          State.toast(`Added: ${cfg.name}`, "success");
+        } catch (err) {
+          State.toast(err.message || String(err), "error");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      li.appendChild(meta);
+      li.appendChild(btn);
+      root.appendChild(li);
+    });
+  }
+
+  function wireVectorUpload() {
+    const btn = document.getElementById("vector-upload-btn");
+    const input = document.getElementById("vector-upload-input");
+    const nameField = document.getElementById("vector-upload-name");
+    const status = document.getElementById("vector-upload-status");
+    if (!btn || !input) return;
+
+    btn.addEventListener("click", async () => {
+      const file = input.files[0];
+      if (!file) {
+        status.textContent = "Choose a .geojson file first.";
+        return;
+      }
+      const name = nameField.value.trim() || file.name;
+      btn.disabled = true;
+      status.textContent = `Publishing ${name}…`;
+      try {
+        const result = await window.VectorTiles.uploadGeoJson(file, name);
+        status.textContent =
+          `Published ${result.featureCount} features as ` +
+          `vector.${result.tableName}.`;
+        input.value = "";
+        nameField.value = "";
+        await loadVectorCatalog(true);
+      } catch (err) {
+        status.textContent = err.message || String(err);
+      } finally {
+        btn.disabled = false;
+      }
+    });
   }
 
   async function onConfirmAdd(modal) {

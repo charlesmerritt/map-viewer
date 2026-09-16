@@ -1124,3 +1124,80 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Vector layer styling controls ---- */
+
+.layer-range-input {
+  flex: 1 1 0;
+  min-width: 0;
+  /* --border-strong is the visible edge of a control, per the 1.4.11 note
+     at the top of this file. */
+  min-height: var(--tap);
+  padding: 4px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.layer-range-input:focus-visible {
+  outline: var(--focus-ring) solid var(--accent-2);
+  outline-offset: 1px;
+}
+
+/* ---- Vector feature popups ---- */
+
+.vector-popup {
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.vector-popup-title {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vector-popup-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.vector-popup-table th,
+.vector-popup-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.vector-popup-table th {
+  width: 40%;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+/* MapLibre's popup chrome is light by default; match the app's dark surface. */
+.maplibregl-popup-content {
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: var(--panel); }
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--panel); }
+.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--panel); }
+.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--panel); }
+
+.maplibregl-popup-close-button {
+  width: var(--tap);
+  height: var(--tap);
+  color: var(--text);
+  font-size: 16px;
+}

@@ -11,6 +11,9 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024;
+// Vector uploads are parsed into memory before they reach PostGIS, so they get
+// a much smaller ceiling than the streamed-to-disk raster path.
+const DEFAULT_MAX_VECTOR_BYTES = 128 * 1024 * 1024;
 const TIFF_EXTENSIONS = new Set([".tif", ".tiff"]);
 const MIME_TYPES = new Map([
   [".css", "text/css; charset=utf-8"],
@@ -204,6 +207,172 @@ async function deleteRaster(res, id, options) {
   res.end();
 }
 
+// ---- Vector layers (PostGIS + pg_tileserv) ----
+
+// The vector endpoints load db/* lazily so that a deployment without a
+// DATABASE_URL — or without `pg` installed — still serves the map and the
+// raster paths instead of failing at import time.
+async function vectorModules() {
+  const [client, registry, ingest] = await Promise.all([
+    import("./db/client.mjs"),
+    import("./db/registry.mjs"),
+    import("./db/ingest.mjs"),
+  ]);
+  return { client, registry, ingest };
+}
+
+function vectorUnavailable(res) {
+  json(res, 503, {
+    error:
+      "Vector layers are not configured. Set DATABASE_URL and VECTOR_TILE_BASE_URL.",
+  });
+}
+
+async function listVectorLayers(res, options) {
+  const { client, registry } = await vectorModules();
+  if (!client.isConfigured()) {
+    // Not an error: a viewer with no database simply has no vector catalog.
+    json(res, 200, { layers: [], configured: false });
+    return;
+  }
+  const layers = await registry.listLayers(options.vectorTileBaseUrl);
+  json(res, 200, {
+    layers,
+    configured: true,
+    tileBaseUrl: options.vectorTileBaseUrl,
+  });
+}
+
+async function serveVectorLayerBounds(res, tableName, options) {
+  const { client, registry } = await vectorModules();
+  if (!client.isConfigured()) {
+    vectorUnavailable(res);
+    return;
+  }
+  let bounds;
+  try {
+    bounds = await registry.layerBounds(tableName);
+  } catch (error) {
+    json(res, 400, { error: error.message });
+    return;
+  }
+  if (!bounds) {
+    json(res, 404, { error: "Layer not found or empty." });
+    return;
+  }
+  json(res, 200, { bounds });
+}
+
+async function serveVectorFeature(res, tableName, featureId, options) {
+  const { client, registry } = await vectorModules();
+  if (!client.isConfigured()) {
+    vectorUnavailable(res);
+    return;
+  }
+  const entry = await registry.getLayer(tableName, options.vectorTileBaseUrl);
+  if (!entry) {
+    json(res, 404, { error: "Layer not found." });
+    return;
+  }
+  if (!entry.idColumn) {
+    json(res, 409, { error: "Layer has no id column registered." });
+    return;
+  }
+  let feature;
+  try {
+    feature = await registry.getFeature(tableName, entry.idColumn, featureId);
+  } catch (error) {
+    json(res, 400, { error: error.message });
+    return;
+  }
+  if (!feature) {
+    json(res, 404, { error: "Feature not found." });
+    return;
+  }
+  json(res, 200, feature);
+}
+
+async function readJsonBody(req, maxBytes) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) {
+      throw new UploadTooLargeError(`Upload exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(chunk);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+async function receiveVector(req, res, url, options) {
+  const { client, ingest } = await vectorModules();
+  if (!client.isConfigured()) {
+    vectorUnavailable(res);
+    return;
+  }
+
+  const name = basename(url.searchParams.get("name") || "").trim();
+  if (!name) {
+    json(res, 400, { error: "A ?name= parameter is required." });
+    return;
+  }
+
+  const contentLength = Number(req.headers["content-length"] || 0);
+  if (contentLength > options.maxVectorBytes) {
+    json(res, 413, { error: `Upload exceeds ${options.maxVectorBytes} bytes.` });
+    return;
+  }
+
+  let collection;
+  try {
+    collection = await readJsonBody(req, options.maxVectorBytes);
+  } catch (error) {
+    if (error instanceof UploadTooLargeError) {
+      json(res, 413, { error: error.message });
+      return;
+    }
+    json(res, 400, { error: "Body is not valid JSON." });
+    return;
+  }
+
+  try {
+    const result = await ingest.ingestGeoJson(collection, {
+      title: name,
+      description: url.searchParams.get("description") || null,
+    });
+    json(res, 201, {
+      ...result,
+      tileUrl:
+        `${options.vectorTileBaseUrl.replace(/\/$/, "")}` +
+        `/vector.${result.tableName}/{z}/{x}/{y}.pbf`,
+      deleteUrl: `/api/vector/layers/${result.tableName}`,
+    });
+  } catch (error) {
+    console.error("[vector] ingest failed", error);
+    json(res, 422, { error: error.message || "Could not ingest GeoJSON." });
+  }
+}
+
+async function deleteVectorLayer(res, tableName) {
+  const { client, ingest } = await vectorModules();
+  if (!client.isConfigured()) {
+    vectorUnavailable(res);
+    return;
+  }
+  try {
+    const removed = await ingest.dropLayer(tableName);
+    if (!removed) {
+      json(res, 404, { error: "Layer not found." });
+      return;
+    }
+    res.writeHead(204);
+    res.end();
+  } catch (error) {
+    json(res, 400, { error: error.message });
+  }
+}
+
 async function serveStatic(req, res, url, publicDir) {
   if (req.method !== "GET" && req.method !== "HEAD") {
     json(res, 405, { error: "Method not allowed." });
@@ -258,6 +427,14 @@ export function createRasterServer(overrides = {}) {
     maxUploadBytes: Number(
       overrides.maxUploadBytes ?? process.env.MAX_UPLOAD_BYTES ?? DEFAULT_MAX_UPLOAD_BYTES
     ),
+    maxVectorBytes: Number(
+      overrides.maxVectorBytes ?? process.env.MAX_VECTOR_BYTES ?? DEFAULT_MAX_VECTOR_BYTES
+    ),
+    vectorTileBaseUrl: (
+      overrides.vectorTileBaseUrl ??
+      process.env.VECTOR_TILE_BASE_URL ??
+      ""
+    ).replace(/\/$/, ""),
   };
 
   return createServer(async (req, res) => {
@@ -280,9 +457,51 @@ export function createRasterServer(overrides = {}) {
         return;
       }
 
+      if (req.method === "GET" && url.pathname === "/api/vector/layers") {
+        await listVectorLayers(res, options);
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/vector/layers") {
+        await receiveVector(req, res, url, options);
+        return;
+      }
+
+      const vectorBoundsMatch = /^\/api\/vector\/layers\/([a-z_][a-z0-9_]*)\/bounds$/.exec(
+        url.pathname
+      );
+      if (req.method === "GET" && vectorBoundsMatch) {
+        await serveVectorLayerBounds(res, vectorBoundsMatch[1], options);
+        return;
+      }
+
+      const vectorFeatureMatch =
+        /^\/api\/vector\/layers\/([a-z_][a-z0-9_]*)\/features\/([^/]+)$/.exec(
+          url.pathname
+        );
+      if (req.method === "GET" && vectorFeatureMatch) {
+        await serveVectorFeature(
+          res,
+          vectorFeatureMatch[1],
+          decodeURIComponent(vectorFeatureMatch[2]),
+          options
+        );
+        return;
+      }
+
+      const vectorDeleteMatch = /^\/api\/vector\/layers\/([a-z_][a-z0-9_]*)$/.exec(
+        url.pathname
+      );
+      if (req.method === "DELETE" && vectorDeleteMatch) {
+        await deleteVectorLayer(res, vectorDeleteMatch[1]);
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/env.js") {
         const body = `window.__ENV = { CARTO_API_KEY: ${JSON.stringify(
           process.env.CARTO_API_KEY || ""
+        )}, VECTOR_TILE_BASE_URL: ${JSON.stringify(
+          options.vectorTileBaseUrl
         )} };\n`;
         res.writeHead(200, {
           "content-type": "application/javascript; charset=utf-8",
@@ -306,14 +525,20 @@ export function createRasterServer(overrides = {}) {
   });
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Exported so scripts/boot.mjs gets the same local-development .env handling
+// before it runs migrations; on Railway the platform supplies the variables
+// and there is no .env to read.
+export function loadDotEnv() {
   const envPath = join(fileURLToPath(new URL(".", import.meta.url)), ".env");
-  if (existsSync(envPath)) {
-    for (const line of readFileSync(envPath, "utf8").split("\n")) {
-      const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line.trim());
-      if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2];
-    }
+  if (!existsSync(envPath)) return;
+  for (const line of readFileSync(envPath, "utf8").split("\n")) {
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line.trim());
+    if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2];
   }
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  loadDotEnv();
   const port = Number(process.env.PORT || 3000);
   createRasterServer().listen(port, () => {
     console.log(`PERSEUS Map Viewer listening on http://localhost:${port}`);
