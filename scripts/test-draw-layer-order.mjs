@@ -24,8 +24,11 @@ const DRAWN = [
   "drawn-polygons-fill",
   "drawn-polygons-line",
   "drawn-polygons-selected-line",
+  "draw-active-fill",
   "draw-active-line",
   "draw-active-vertices",
+  "draw-active-snap",
+  "draw-active-label",
 ];
 
 let map = null;
