@@ -91,12 +91,17 @@
         <section class="panel" id="zonal-panel">
           <h2 class="panel-title">Zonal tools</h2>
           <div class="zonal-draw-actions">
-            <button id="zonal-draw-btn" class="btn-ghost" title="Draw a polygon on the map (double-click or Enter to finish, Esc to cancel)">✏ Draw polygon</button>
-            <button id="zonal-clear-drawn-btn" class="btn-ghost" title="Remove all drawn polygons">Clear drawn</button>
+            <button id="zonal-draw-btn" class="btn-ghost" title="Draw a polygon on the map (double-click or Enter to finish, Esc to cancel)">✏ Polygon</button>
+            <button id="zonal-draw-circle-btn" class="btn-ghost" title="Draw a circle (drag to size, or type a radius in miles and press Enter, Esc to cancel)">◯ Circle</button>
+            <button id="zonal-draw-rect-btn" class="btn-ghost" title="Draw a rectangle (drag to size, hold Shift for a square, Esc to cancel)">▭ Rectangle</button>
+            <button id="zonal-clear-drawn-btn" class="btn-ghost" title="Remove all drawn shapes">Clear drawn</button>
           </div>
           <p id="zonal-empty" class="empty-hint">
-            Draw a polygon on the map, or toggle built-in state/county polygons
-            and click one, then summarize a raster layer over it.
+            Draw a polygon, circle, or rectangle on the map — hold Shift while
+            dragging a rectangle for a square, or type a number and press
+            Enter to set an exact circle radius in miles — or toggle built-in
+            state/county polygons and click one, then summarize a raster
+            layer over it.
           </p>
           <div id="zonal-selection" class="hidden">
             <div class="zonal-selected-label">Selected polygon</div>
@@ -328,6 +333,7 @@
     <script src="state.js"></script>
     <script src="layers.js"></script>
     <script src="boundary-layers.js"></script>
+    <script src="draw-geometry.js"></script>
     <script src="draw-tools.js"></script>
     <script src="zonal-core.js"></script>
     <script src="zonal-engine.js"></script>
