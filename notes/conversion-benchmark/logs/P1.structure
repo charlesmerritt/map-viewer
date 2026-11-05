@@ -1,0 +1,4 @@
+Size is 154179, 97279
+Band 1 Block=128x128 Type=Float32, ColorInterp=Gray
+  NoData Value=-9999
+-rw-r--r-- 1 chazm chazm 4288416119 Nov  5 16:32 src/TreeMap2022_BALIVE_CONUS.tif

@@ -1,0 +1,126 @@
+{
+ "label": "S1b_approx_stats_evt_plain",
+ "result": "ok",
+ "wall_s": 1.0,
+ "time_elapsed": "0:00.24",
+ "user_s": 0.17,
+ "sys_s": 0.05,
+ "cpu_pct": "94%",
+ "maxrss_gib": 0.122,
+ "poll_peak_rss_gib": 0.002,
+ "peak_temp_gib": 0.0,
+ "peak_out_plus_tmp_gib": 0.0,
+ "out_bytes": 2923085250,
+ "out_gib": 2.722,
+ "mem_available_start_gib": 13.74,
+ "mem_available_min_gib": 13.74,
+ "fs_inputs": "656",
+ "fs_outputs": "8",
+ "cmd": "python3 stats.py approx src/LF2024_EVT_CONUS.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "S2b_exact_stats_evt_plain",
+ "result": "ok",
+ "wall_s": 105.1,
+ "time_elapsed": "1:44.89",
+ "user_s": 103.93,
+ "sys_s": 0.94,
+ "cpu_pct": "99%",
+ "maxrss_gib": 1.092,
+ "poll_peak_rss_gib": 1.094,
+ "peak_temp_gib": 0.0,
+ "peak_out_plus_tmp_gib": 0.0,
+ "out_bytes": 2923085250,
+ "out_gib": 2.722,
+ "mem_available_start_gib": 13.74,
+ "mem_available_min_gib": 12.66,
+ "fs_inputs": "0",
+ "fs_outputs": "8",
+ "cmd": "python3 stats.py exact src/LF2024_EVT_CONUS.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "R1b_evt_deflate_p2_mode_all_1g_with_stats",
+ "result": "ok",
+ "wall_s": 316.7,
+ "time_elapsed": "5:16.07",
+ "user_s": 2666.67,
+ "sys_s": 101.92,
+ "cpu_pct": "875%",
+ "maxrss_gib": 2.736,
+ "poll_peak_rss_gib": 2.742,
+ "peak_temp_gib": 0.944,
+ "peak_out_plus_tmp_gib": 5.12,
+ "out_bytes": 4484661845,
+ "out_gib": 4.177,
+ "mem_available_start_gib": 13.74,
+ "mem_available_min_gib": 11.03,
+ "fs_inputs": "0",
+ "fs_outputs": "10747848",
+ "cmd": "gdal_translate -q -of COG -co BLOCKSIZE=512 -co BIGTIFF=IF_SAFER -stats -co COMPRESS=DEFLATE -co PREDICTOR=2 -co OVERVIEW_RESAMPLING=MODE -co NUM_THREADS=ALL_CPUS src/LF2024_EVT_CONUS.tif out/r1b.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "S1c_approx_stats_evt_cog",
+ "result": "ok",
+ "wall_s": 1.0,
+ "time_elapsed": "0:00.07",
+ "user_s": 0.04,
+ "sys_s": 0.02,
+ "cpu_pct": "98%",
+ "maxrss_gib": 0.075,
+ "poll_peak_rss_gib": 0.002,
+ "peak_temp_gib": 0.0,
+ "peak_out_plus_tmp_gib": 4.177,
+ "out_bytes": 4484661845,
+ "out_gib": 4.177,
+ "mem_available_start_gib": 13.73,
+ "mem_available_min_gib": 13.73,
+ "fs_inputs": "0",
+ "fs_outputs": "8",
+ "cmd": "python3 stats.py approx out/r1b.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "S2c_exact_stats_evt_cog",
+ "result": "ok",
+ "wall_s": 100.1,
+ "time_elapsed": "1:39.25",
+ "user_s": 98.57,
+ "sys_s": 0.67,
+ "cpu_pct": "99%",
+ "maxrss_gib": 1.071,
+ "poll_peak_rss_gib": 1.073,
+ "peak_temp_gib": 0.0,
+ "peak_out_plus_tmp_gib": 4.177,
+ "out_bytes": 4484661845,
+ "out_gib": 4.177,
+ "mem_available_start_gib": 13.71,
+ "mem_available_min_gib": 12.69,
+ "fs_inputs": "0",
+ "fs_outputs": "8",
+ "cmd": "python3 stats.py exact out/r1b.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+EVT follow-up done

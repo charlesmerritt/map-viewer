@@ -1,0 +1,151 @@
+{
+ "label": "S1_approx_stats_r1",
+ "result": "ok",
+ "wall_s": 1.0,
+ "time_elapsed": "0:00.03",
+ "user_s": 0.02,
+ "sys_s": 0.0,
+ "cpu_pct": "96%",
+ "maxrss_gib": 0.059,
+ "poll_peak_rss_gib": 0.002,
+ "peak_temp_gib": 0.0,
+ "peak_out_plus_tmp_gib": 4.177,
+ "out_bytes": 4484662103,
+ "out_gib": 4.177,
+ "mem_available_start_gib": 13.39,
+ "mem_available_min_gib": 13.39,
+ "fs_inputs": "0",
+ "fs_outputs": "8",
+ "cmd": "gdalinfo -approx_stats out/r1.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "YES"
+ }
+}
+{
+ "label": "S2_exact_stats_r1",
+ "result": "ok",
+ "wall_s": 1.0,
+ "time_elapsed": "0:00.02",
+ "user_s": 0.02,
+ "sys_s": 0.0,
+ "cpu_pct": "100%",
+ "maxrss_gib": 0.059,
+ "poll_peak_rss_gib": 0.002,
+ "peak_temp_gib": 0.0,
+ "peak_out_plus_tmp_gib": 4.177,
+ "out_bytes": 4484662103,
+ "out_gib": 4.177,
+ "mem_available_start_gib": 13.38,
+ "mem_available_min_gib": 13.38,
+ "fs_inputs": "0",
+ "fs_outputs": "8",
+ "cmd": "gdalinfo -stats out/r1.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "YES"
+ }
+}
+{
+ "label": "R2_evt_zstd_p2_mode_all_1g",
+ "result": "ok",
+ "wall_s": 217.7,
+ "time_elapsed": "3:37.02",
+ "user_s": 2542.31,
+ "sys_s": 75.54,
+ "cpu_pct": "1206%",
+ "maxrss_gib": 2.695,
+ "poll_peak_rss_gib": 2.701,
+ "peak_temp_gib": 0.944,
+ "peak_out_plus_tmp_gib": 5.057,
+ "out_bytes": 4416778373,
+ "out_gib": 4.113,
+ "mem_available_start_gib": 13.41,
+ "mem_available_min_gib": 9.8,
+ "fs_inputs": "264",
+ "fs_outputs": "10615256",
+ "cmd": "gdal_translate -q -of COG -co BLOCKSIZE=512 -co BIGTIFF=IF_SAFER -co COMPRESS=ZSTD -co PREDICTOR=2 -co OVERVIEW_RESAMPLING=MODE -co NUM_THREADS=ALL_CPUS src/LF2024_EVT_CONUS.tif out/r2.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "R3_evt_deflate_p2_mode_all_256m",
+ "result": "ok",
+ "wall_s": 211.6,
+ "time_elapsed": "3:30.66",
+ "user_s": 2528.71,
+ "sys_s": 77.63,
+ "cpu_pct": "1237%",
+ "maxrss_gib": 1.254,
+ "poll_peak_rss_gib": 1.26,
+ "peak_temp_gib": 0.944,
+ "peak_out_plus_tmp_gib": 5.116,
+ "out_bytes": 4484662103,
+ "out_gib": 4.177,
+ "mem_available_start_gib": 12.91,
+ "mem_available_min_gib": 11.9,
+ "fs_inputs": "0",
+ "fs_outputs": "10747840",
+ "cmd": "gdal_translate -q -of COG -co BLOCKSIZE=512 -co BIGTIFF=IF_SAFER -co COMPRESS=DEFLATE -co PREDICTOR=2 -co OVERVIEW_RESAMPLING=MODE -co NUM_THREADS=ALL_CPUS src/LF2024_EVT_CONUS.tif out/r3.tif",
+ "env": {
+  "GDAL_CACHEMAX": "256",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "R4_evt_deflate_p2_mode_1t_1g",
+ "result": "ok",
+ "wall_s": 577.6,
+ "time_elapsed": "9:36.91",
+ "user_s": 569.05,
+ "sys_s": 7.83,
+ "cpu_pct": "99%",
+ "maxrss_gib": 2.093,
+ "poll_peak_rss_gib": 2.096,
+ "peak_temp_gib": 0.944,
+ "peak_out_plus_tmp_gib": 5.12,
+ "out_bytes": 4484662103,
+ "out_gib": 4.177,
+ "mem_available_start_gib": 13.7,
+ "mem_available_min_gib": 11.68,
+ "fs_inputs": "0",
+ "fs_outputs": "10747936",
+ "cmd": "gdal_translate -q -of COG -co BLOCKSIZE=512 -co BIGTIFF=IF_SAFER -co COMPRESS=DEFLATE -co PREDICTOR=2 -co OVERVIEW_RESAMPLING=MODE -co NUM_THREADS=1 src/LF2024_EVT_CONUS.tif out/r4.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "R7_evt_deflate_nopred_mode_all_1g",
+ "result": "ok",
+ "wall_s": 219.6,
+ "time_elapsed": "3:38.98",
+ "user_s": 2664.35,
+ "sys_s": 77.07,
+ "cpu_pct": "1251%",
+ "maxrss_gib": 2.685,
+ "poll_peak_rss_gib": 2.691,
+ "peak_temp_gib": 0.944,
+ "peak_out_plus_tmp_gib": 4.223,
+ "out_bytes": 3521770520,
+ "out_gib": 3.28,
+ "mem_available_start_gib": 13.77,
+ "mem_available_min_gib": 11.09,
+ "fs_inputs": "0",
+ "fs_outputs": "8866816",
+ "cmd": "gdal_translate -q -of COG -co BLOCKSIZE=512 -co BIGTIFF=IF_SAFER -co COMPRESS=DEFLATE -co PREDICTOR=NO -co OVERVIEW_RESAMPLING=MODE -co NUM_THREADS=ALL_CPUS src/LF2024_EVT_CONUS.tif out/r7.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+EVT queue done

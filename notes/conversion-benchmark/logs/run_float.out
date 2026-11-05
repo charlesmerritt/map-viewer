@@ -1,0 +1,151 @@
+{
+ "label": "P1_make_balive_source",
+ "result": "ok",
+ "wall_s": 166.2,
+ "time_elapsed": "2:45.55",
+ "user_s": 306.96,
+ "sys_s": 33.28,
+ "cpu_pct": "205%",
+ "maxrss_gib": 1.154,
+ "poll_peak_rss_gib": 1.152,
+ "peak_temp_gib": 0.0,
+ "peak_out_plus_tmp_gib": 0.0,
+ "out_bytes": 4288416119,
+ "out_gib": 3.994,
+ "mem_available_start_gib": 13.74,
+ "mem_available_min_gib": 12.65,
+ "fs_inputs": "256",
+ "fs_outputs": "8397376",
+ "cmd": "python3 make_balive.py src/TreeMap2022_BALIVE_CONUS.tif",
+ "env": {
+  "GDAL_CACHEMAX": "512",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "S5_exact_stats_balive_plain",
+ "result": "ok",
+ "wall_s": 87.1,
+ "time_elapsed": "1:26.93",
+ "user_s": 85.76,
+ "sys_s": 1.16,
+ "cpu_pct": "99%",
+ "maxrss_gib": 1.091,
+ "poll_peak_rss_gib": 1.093,
+ "peak_temp_gib": 0.0,
+ "peak_out_plus_tmp_gib": 0.0,
+ "out_bytes": 4288416119,
+ "out_gib": 3.994,
+ "mem_available_start_gib": 13.75,
+ "mem_available_min_gib": 12.68,
+ "fs_inputs": "0",
+ "fs_outputs": "8",
+ "cmd": "python3 stats.py exact src/TreeMap2022_BALIVE_CONUS.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "R5_balive_deflate_p3_avg_all_1g",
+ "result": "ok",
+ "wall_s": 271.5,
+ "time_elapsed": "4:30.76",
+ "user_s": 1855.02,
+ "sys_s": 59.02,
+ "cpu_pct": "706%",
+ "maxrss_gib": 2.555,
+ "poll_peak_rss_gib": 2.561,
+ "peak_temp_gib": 3.961,
+ "peak_out_plus_tmp_gib": 16.344,
+ "out_bytes": 13296471827,
+ "out_gib": 12.383,
+ "mem_available_start_gib": 13.73,
+ "mem_available_min_gib": 11.21,
+ "fs_inputs": "11628760",
+ "fs_outputs": "34285832",
+ "cmd": "gdal_translate -q -of COG -co BLOCKSIZE=512 -co BIGTIFF=IF_SAFER -co COMPRESS=DEFLATE -co PREDICTOR=3 -co OVERVIEW_RESAMPLING=AVERAGE -co NUM_THREADS=ALL_CPUS src/TreeMap2022_BALIVE_CONUS.tif out/r5.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "S3_approx_stats_r5_cog",
+ "result": "ok",
+ "wall_s": 1.0,
+ "time_elapsed": "0:00.13",
+ "user_s": 0.05,
+ "sys_s": 0.03,
+ "cpu_pct": "66%",
+ "maxrss_gib": 0.074,
+ "poll_peak_rss_gib": 0.002,
+ "peak_temp_gib": 0.0,
+ "peak_out_plus_tmp_gib": 12.383,
+ "out_bytes": 13296471827,
+ "out_gib": 12.383,
+ "mem_available_start_gib": 14.1,
+ "mem_available_min_gib": 14.1,
+ "fs_inputs": "22688",
+ "fs_outputs": "8",
+ "cmd": "python3 stats.py approx out/r5.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "S4_exact_stats_r5_cog",
+ "result": "ok",
+ "wall_s": 83.1,
+ "time_elapsed": "1:22.82",
+ "user_s": 79.89,
+ "sys_s": 2.74,
+ "cpu_pct": "99%",
+ "maxrss_gib": 1.074,
+ "poll_peak_rss_gib": 1.076,
+ "peak_temp_gib": 0.0,
+ "peak_out_plus_tmp_gib": 12.383,
+ "out_bytes": 13296471827,
+ "out_gib": 12.383,
+ "mem_available_start_gib": 14.06,
+ "mem_available_min_gib": 13.02,
+ "fs_inputs": "6414216",
+ "fs_outputs": "8",
+ "cmd": "python3 stats.py exact out/r5.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+{
+ "label": "R6_balive_deflate_nopred_avg_all_1g",
+ "result": "ok",
+ "wall_s": 261.5,
+ "time_elapsed": "4:20.68",
+ "user_s": 1763.51,
+ "sys_s": 50.27,
+ "cpu_pct": "695%",
+ "maxrss_gib": 2.575,
+ "poll_peak_rss_gib": 2.58,
+ "peak_temp_gib": 3.961,
+ "peak_out_plus_tmp_gib": 10.563,
+ "out_bytes": 7089721304,
+ "out_gib": 6.603,
+ "mem_available_start_gib": 14.09,
+ "mem_available_min_gib": 11.57,
+ "fs_inputs": "3678792",
+ "fs_outputs": "22163288",
+ "cmd": "gdal_translate -q -of COG -co BLOCKSIZE=512 -co BIGTIFF=IF_SAFER -co COMPRESS=DEFLATE -co PREDICTOR=NO -co OVERVIEW_RESAMPLING=AVERAGE -co NUM_THREADS=ALL_CPUS src/TreeMap2022_BALIVE_CONUS.tif out/r6.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}
+float queue done

@@ -1,0 +1,79 @@
+Driver: GTiff/GeoTIFF
+Files: out/r1.tif
+Size is 156336, 101538
+Coordinate System is:
+PROJCRS["NAD83 / Conus Albers",
+    BASEGEOGCRS["NAD83",
+        DATUM["North American Datum 1983",
+            ELLIPSOID["GRS 1980",6378137,298.257222101,
+                LENGTHUNIT["metre",1]]],
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433]],
+        ID["EPSG",4269]],
+    CONVERSION["Conus Albers",
+        METHOD["Albers Equal Area",
+            ID["EPSG",9822]],
+        PARAMETER["Latitude of false origin",23,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8821]],
+        PARAMETER["Longitude of false origin",-96,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8822]],
+        PARAMETER["Latitude of 1st standard parallel",29.5,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8823]],
+        PARAMETER["Latitude of 2nd standard parallel",45.5,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8824]],
+        PARAMETER["Easting at false origin",0,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8826]],
+        PARAMETER["Northing at false origin",0,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8827]]],
+    CS[Cartesian,2],
+        AXIS["easting (X)",east,
+            ORDER[1],
+            LENGTHUNIT["metre",1]],
+        AXIS["northing (Y)",north,
+            ORDER[2],
+            LENGTHUNIT["metre",1]],
+    USAGE[
+        SCOPE["Data analysis and small scale data presentation for contiguous lower 48 states."],
+        AREA["United States (USA) - CONUS onshore - Alabama; Arizona; Arkansas; California; Colorado; Connecticut; Delaware; Florida; Georgia; Idaho; Illinois; Indiana; Iowa; Kansas; Kentucky; Louisiana; Maine; Maryland; Massachusetts; Michigan; Minnesota; Mississippi; Missouri; Montana; Nebraska; Nevada; New Hampshire; New Jersey; New Mexico; New York; North Carolina; North Dakota; Ohio; Oklahoma; Oregon; Pennsylvania; Rhode Island; South Carolina; South Dakota; Tennessee; Texas; Utah; Vermont; Virginia; Washington; West Virginia; Wisconsin; Wyoming."],
+        BBOX[24.41,-124.79,49.38,-66.91]],
+    ID["EPSG",5070]]
+Data axis to CRS axis mapping: 1,2
+Origin = (-2362425.000000000000000,3267405.000000000000000)
+Pixel Size = (30.000000000000000,-30.000000000000000)
+Metadata:
+  TIFFTAG_SOFTWARE=GDAL 3.8.1e (3080114) (4.6.0;1710;3.0.1;2.1.6;;0x10302;5.4.5;), PROJ 9.3.1 (EPSG.VERSION=v10.098;EPSG.DATE=2023-11-24;ESRI.VERSION=ArcGIS Pro 3.2;ESRI.DATE=2023-11-02;PROJ_DATA.VERSION=1.16;)
+  AREA_OR_POINT=Area
+Image Structure Metadata:
+  LAYOUT=COG
+  COMPRESSION=DEFLATE
+  INTERLEAVE=BAND
+  OVERVIEW_RESAMPLING=MODE
+  PREDICTOR=2
+Corner Coordinates:
+Upper Left  (-2362425.000, 3267405.000) (128d23'14.23"W, 48d45' 5.16"N)
+Lower Left  (-2362425.000,  221265.000) (118d41' 9.49"W, 22d25'42.02"N)
+Upper Right ( 2327655.000, 3267405.000) ( 64d 3'14.58"W, 48d51'23.26"N)
+Lower Right ( 2327655.000,  221265.000) ( 73d38' 8.32"W, 22d30'13.03"N)
+Center      (  -17385.000, 1744335.000) ( 96d12' 6.70"W, 38d43'37.37"N)
+Band 1 Block=512x512 Type=Int16, ColorInterp=Gray
+  Min=-9999.000 Max=9994.000 
+  Minimum=-9999.000, Maximum=9994.000, Mean=1559.615, StdDev=8482.694
+  NoData Value=32767
+  Overviews: 78168x50769, 39084x25384, 19542x12692, 9771x6346, 4885x3173, 2442x1586, 1221x793, 610x396, 305x198
+  Metadata:
+    RepresentationType=ATHEMATIC
+    STATISTICS_COUNT=15038630766.000000
+    STATISTICS_COVARIANCES=71956094.50403845
+    STATISTICS_MAXIMUM=9994
+    STATISTICS_MEAN=1559.6154505623
+    STATISTICS_MEDIAN=7093.054902
+    STATISTICS_MINIMUM=-9999
+    STATISTICS_SKIPFACTORX=1
+    STATISTICS_SKIPFACTORY=1
+    STATISTICS_STDDEV=8482.6938235468

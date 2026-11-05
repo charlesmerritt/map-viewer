@@ -1,0 +1,26 @@
+{
+ "label": "W1_fown_4269_to_5070_30m_near",
+ "result": "ok",
+ "wall_s": 555.7,
+ "time_elapsed": "9:15.55",
+ "user_s": 1951.24,
+ "sys_s": 474.17,
+ "cpu_pct": "436%",
+ "maxrss_gib": 3.538,
+ "poll_peak_rss_gib": 3.132,
+ "peak_temp_gib": 0.665,
+ "peak_out_plus_tmp_gib": 1.336,
+ "out_bytes": 723520142,
+ "out_gib": 0.674,
+ "mem_available_start_gib": 14.23,
+ "mem_available_min_gib": 11.14,
+ "fs_inputs": "1584",
+ "fs_outputs": "2816936",
+ "cmd": "gdalwarp -q -t_srs EPSG:5070 -tr 30 30 -tap -r near -multi -wo NUM_THREADS=ALL_CPUS -wm 512 -of COG -co BLOCKSIZE=512 -co COMPRESS=DEFLATE -co PREDICTOR=NO -co OVERVIEW_RESAMPLING=MODE -co NUM_THREADS=ALL_CPUS -co BIGTIFF=IF_SAFER src/US_forest_ownership.tif out/w1.tif",
+ "env": {
+  "GDAL_CACHEMAX": "1024",
+  "CPL_TMPDIR": "/home/chazm/projects/map-viewer/.claude/worktrees/agent-a0fbb1c8925517782/.uploads/t11/tmp",
+  "GDAL_NUM_THREADS": "ALL_CPUS",
+  "GDAL_PAM_ENABLED": "NO"
+ }
+}

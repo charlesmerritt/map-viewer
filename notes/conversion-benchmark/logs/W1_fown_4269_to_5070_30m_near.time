@@ -1,0 +1,23 @@
+	Command being timed: "gdalwarp -q -t_srs EPSG:5070 -tr 30 30 -tap -r near -multi -wo NUM_THREADS=ALL_CPUS -wm 512 -of COG -co BLOCKSIZE=512 -co COMPRESS=DEFLATE -co PREDICTOR=NO -co OVERVIEW_RESAMPLING=MODE -co NUM_THREADS=ALL_CPUS -co BIGTIFF=IF_SAFER src/US_forest_ownership.tif out/w1.tif"
+	User time (seconds): 1951.24
+	System time (seconds): 474.17
+	Percent of CPU this job got: 436%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 9:15.55
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 3709420
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 7
+	Minor (reclaiming a frame) page faults: 78884312
+	Voluntary context switches: 28038554
+	Involuntary context switches: 6666
+	Swaps: 0
+	File system inputs: 1584
+	File system outputs: 2816936
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
